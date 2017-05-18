@@ -3,14 +3,21 @@
 function! packageman#ParsePkgList(pkgs) abort
     let l:detail = {}
     let l:i = 1
+    let l:hide = b:hide_removed
     call map(a:pkgs,'split(v:val,''\t'')')
     for l:pkg in a:pkgs
-        let l:deps = split(get(l:pkg,4,""),',\s*')
-        let [ l:state, l:current ] = [ tolower(l:pkg[0][0]), l:pkg[0][1] ]
-        let l:mark = tolower(l:state)
-        call map(l:deps,'split(v:val,'' '')[0]')
-        let l:detail[l:pkg[1]] = { "name": l:pkg[1], "version": l:pkg[2], "essential": l:pkg[3], "depends": l:deps, "state": l:state, "mark": l:mark, "current": l:current, "line": l:i }
-        let l:i += 1
+        if !has_key(l:detail,l:pkg[1])
+            let [ l:state, l:current ] = [ tolower(l:pkg[0][0]), l:pkg[0][1] ]
+            if l:hide == 1 && l:state ==? 'r' && l:current !=? 'i'
+                "echo 'hiding '.l:pkg[1]
+            else
+                let l:mark = tolower(l:state)
+                let l:deps = split(get(l:pkg,4,""),',\s*')
+                call map(l:deps,'split(v:val,'' '')[0]')
+                let l:detail[l:pkg[1]] = { "name": l:pkg[1], "version": l:pkg[2], "essential": l:pkg[3], "depends": l:deps, "state": l:state, "mark": l:mark, "current": l:current, "line": l:i }
+                let l:i += 1
+            endif
+        endif
     endfor
     return l:detail
 endfunction
@@ -99,31 +106,39 @@ function! packageman#SetSelections() abort
 endfunction
 
 function! packageman#SignSelections() abort
-    nnoremap <silent> <buffer> D :PackageManRemove<CR>
     let l:ignored = (b:package_source ==? 'installed')? 'i' : 'r'
-    for l:pkg in values(b:pkgs)
+    let l:filtered = filter(values(b:pkgs), 'v:val["mark"] !=? v:val["state"] || v:val["state"] !=? '''.l:ignored.'''')
+    for l:pkg in l:filtered
         let l:mark = l:pkg['mark']
         if l:pkg['essential'] !=? 'no'
             let l:mark = toupper(l:mark)
         endif
         if l:pkg['state'] !=? l:mark || l:pkg['state'] !=? l:ignored
-            call packageman#ToggleSign(l:pkg['line'], l:mark)
+            if !has_key(b:marks,l:pkg['line']) || b:marks[l:pkg['line']] !=? l:mark
+                call packageman#ToggleSign(l:pkg['line'], l:mark)
+            endif
         else
             call packageman#ToggleSign(l:pkg['line'], '')
         endif
     endfor
 endfunction
 
+function! s:packagemanDictSort(a,b) abort
+    if a:a['line'] < a:b['line']
+        return -1
+    elseif a:b['line'] < a:a['line']
+        return 1
+    else
+        return 0
+    endif
+endfunction
+
 function! packageman#LoadBuffer() abort
     let l:len = sort(values(map(copy(b:pkgs),'len(v:val["name"])')),'n')[-1]
-    let l:buffer = []
-    for l:pkg in values(b:pkgs)
-        let [ l:line,l:name,l:ver ] = [ l:pkg["line"], l:pkg["name"], l:pkg["version"] ]
-        while len(l:buffer) < l:line
-            let l:buffer += ["~~"]
-        endwhile
-        let l:buffer[l:line-1] = printf("%-*s%s",l:len+4,l:name,l:ver)
-    endfor
+    let l:len += 4
+    let l:buffer = map(sort(values(b:pkgs),
+                \ function('s:packagemanDictSort')),
+                \ 'printf("%-*s%s",l:len, v:val[''name''], v:val[''version''])')
     call setline(1,l:buffer)
 endfunction
 
@@ -143,23 +158,39 @@ function! packageman#PackageInfo() abort
     let l:pkg = split(getline('.'),'\s\+')[0]
     let l:pos = line('w0')
     let l:data = b:pkgs[l:pkg]
-    if exists('b:last_preview') && b:last_preview == line('.')
+    " Detect if preview windows closed for other reasons..
+    let l:pvw = -1
+    for l:nr in range(1,winnr('$'))
+        if getwinvar(l:nr,'&previewwindow') == 1
+            let l:pvw = l:nr
+            break
+        endif
+    endfor
+
+    " If preview window is open, and the current line is the same as the previous
+    " then close it.
+    if exists('b:last_preview') && b:last_preview == line('.') && l:pvw >= 0
         silent pclose
         unlet! b:last_preview
     else
-        " Close any existing preview window
-        silent pclose
-        " Open a buffer in a split to be the new preview window.
-        " - '&previewheight split' to set the correct height
-        " - '+buffer fnameescape()' to ensure the same buffer is reloaded into the split every time
-        exe 'silent topleft '.&previewheight.'split +buffer '.fnameescape('Package Info')
-        " Mark the window as an unsaved, unchangable preview window
-        setlocal previewwindow
-        setlocal buftype=nowrite
+        if l:pvw < 0
+            " Open a buffer in a split to be the new preview window.
+            " - '&previewheight split' to set the correct height
+            " - '+buffer fnameescape()' to ensure the same buffer is reloaded into the split every time
+            exe 'silent topleft '.&previewheight.'split +buffer '.fnameescape('Package Info')
+            " Mark the window as an unsaved, unchangable preview window
+            setlocal previewwindow
+            setlocal buftype=nowrite
+            setlocal filetype=help
+        else
+            exe l:pvw.'wincmd w'
+        endif
         setlocal modifiable
+        " Clear the window
+        exe '%d'
         if !has_key(l:data,'packageinfo')
             echon 'Getting description for package '.l:pkg
-            let l:data['packageinfo'] = systemlist('dpkg-query -W --showformat=''** ${Package} ${Version}\n\nDepends on ${Depends}\n\n${Description}\n'' '.l:pkg)
+            let l:data['packageinfo'] = systemlist('dpkg-query -W --showformat=''** *${Package}* `${Version}`\n\nDepends on ${Depends}~\n\n${Description}\n'' '.l:pkg)
         else
             echo
         endif
@@ -196,6 +227,7 @@ function! packageman#Load() abort
     " Ensure the buffer is now read-only and won't be saved automatically when we exit
     setlocal nomodifiable
     setlocal nomodified
+    setlocal iskeyword+=45-47
     call packageman#SignSelections()
 endfunction
 
@@ -234,6 +266,12 @@ function! packageman#Init(bang) abort
     setlocal buftype=acwrite
     let b:package_source = ( a:bang ==# '' ) ? 'installed' : 'available'
 
+    if exists('g:packageman_hide_removed')
+        let b:hide_removed = g:packageman_hide_removed
+    else
+        let b:hide_removed = 0
+    endif
+
     command! -buffer PackageManView call packageman#ListMarks()
     command! -buffer -range PackageManRemove call packageman#SetMark('r',<line1>,<line2>)
     command! -buffer -range PackageManInstall call packageman#SetMark('i',<line1>,<line2>)
@@ -266,6 +304,8 @@ function! packageman#Init(bang) abort
 
     nnoremap <silent> <buffer> h :PackageManInfo<CR>
     nnoremap <silent> <buffer> <Leader>P :PackageManPurgeAll<CR>
+
+    nnoremap <silent> <buffer> <F1> :help packageman-bindings<CR>
 
     vnoremap <silent> <buffer> D :PackageManRemove<CR>
     vnoremap <silent> <buffer> R :PackageManRemove<CR>
@@ -320,19 +360,23 @@ function! packageman#MarkRange(mark,start,end) abort
                 if has_key(b:deps, l:pkg) && a:mark ==? 'r' && b:mark_set
                     let l:deps = b:deps[l:pkg]
                     for l:dep in l:deps
-                        if b:pkgs[l:dep]['mark'] !=? a:mark
-                            let l:undo += [ [ l:dep, b:pkgs[l:dep]['mark'] ] ]
-                            let b:pkgs[l:dep]['mark'] = a:mark
-                            let l:count += 1
+                        if has_key(b:pkgs,l:dep)
+                            if b:pkgs[l:dep]['mark'] !=? a:mark
+                                let l:undo += [ [ l:dep, b:pkgs[l:dep]['mark'] ] ]
+                                let b:pkgs[l:dep]['mark'] = a:mark
+                                let l:count += 1
+                            endif
                         endif
                     endfor
                 elseif has_key(b:pkgs[l:pkg],'depends') && a:mark ==? 'i' && b:mark_set
                     let l:deps = b:pkgs[l:pkg]['depends']
                     for l:dep in l:deps
-                        if b:pkgs[l:dep]['mark'] !=? a:mark
-                            let l:undo += [ [ l:dep, b:pkgs[l:dep]['mark'] ] ]
-                            let b:pkgs[l:dep]['mark'] = a:mark
-                            let l:count += 1
+                        if has_key(b:pkgs,l:dep)
+                            if b:pkgs[l:dep]['mark'] !=? a:mark
+                                let l:undo += [ [ l:dep, b:pkgs[l:dep]['mark'] ] ]
+                                let b:pkgs[l:dep]['mark'] = a:mark
+                                let l:count += 1
+                            endif
                         endif
                     endfor
                 endif
@@ -345,6 +389,8 @@ function! packageman#MarkRange(mark,start,end) abort
     endif
     if l:count > 1
         echo l:count.' packages marked.'
+    else
+        echo
     endif
     call packageman#SignSelections()
 endfunction
@@ -370,10 +416,11 @@ function! packageman#PurgeAll() abort
 endfunction
 
 function! packageman#Execute() abort
-    if packageman#SetSelections()
+    if packageman#SetSelections() > 0
         call packageman#SignSelections()
-        "echo 'apt-get dselect-update'
+        exe '!sudo apt-get dselect-upgrade'
     endif
+    redraw!
 endfunction
 
 function! packageman#PrevMark() abort

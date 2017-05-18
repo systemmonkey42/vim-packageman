@@ -1,0 +1,220 @@
+*packageman.txt*  Ubuntu/Debian Package Management plugin
+*packageman* *vim-packageman*
+                         _                                                  ~
+        _ __   __ _  ___| | ____ _  __ _  ___ _ __ ___   __ _ _ __          ~
+       | '_ \ / _` |/ __| |/ / _` |/ _` |/ _ \ '_ ` _ \ / _` | '_ \         ~
+       | |_) | (_| | (__|   < (_| | (_| |  __/ | | | | | (_| | | | |        ~
+       | .__/ \__,_|\___|_|\_\__,_|\__, |\___|_| |_| |_|\__,_|_| |_|        ~
+       |_|                         |___/                                    ~
+                                                                            ~
+=============================================================================
+CONTENTS                                                  *packageman-contents*
+
+   01.  Intro .............................................. |packageman-intro|
+   02.  Features ........................................ |packageman-features|
+   03.  Name ................................................ |packageman-name|
+   04.  Configuration .............................. |packageman-configuration|
+   05.  Commands ........................................ |packageman-commands|
+   06.  Key Bindings .................................... |packageman-bindings|
+   07.  Performance .................................. |packageman-performance|
+   08.  License .......................................... |packageman-license|
+
+=============================================================================
+INTRODUCTION                                                 *packageman-intro*
+
+Simple and lightweight Ubuntu/Debian package management from within VIM
+
+This package provides an interface for selecting actions on packages which
+are either already installed or available to install
+
+=============================================================================
+FEATURES                                                  *packageman-features*
+
+*  Simple vimscript only implementation.
+*  Requires only `dpkg-query` to retrieve package information, and `dpkg`
+   to store changes.
+*  Highlights package.
+*  Understands the need to preserve `essential` packages, and highlights
+   them appropriately
+*  Supports previewing and saving the package selection
+*  Saves the package selection change on write and will show the saved state
+   on load
+*  Uses bash, awk and sort under the covers to speed up text processing)
+
+=============================================================================
+NAME                                                          *packageman-name*
+
+Where did the name come from?
+
+It mostly came from a lack of inspiration.
+
+=============================================================================
+CONFIGURATION                                        *packageman-configuration*
+
+There are a couple configuration values available (shown with their default
+values):
+
+* Hide packages which are removed, but not purged >
+  let g:packageman_hide_removed = 0
+<
+=============================================================================
+COMMANDS                                                  *packageman-commands*
+
+The following commands are available:
+
+                                                                  *:PackageMan*
+:|PackageMan|[!]
+
+  Initiates the PackageMan plugin, loading all package information'
+  and displaying the package editor window. The default behaviour is
+  to use the list of installed packages.
+
+  Invoke 'Packageman!' to use the list of 'available' packages.
+  This includes all installed, and not yet installed packages available
+  to apt-get.
+
+  *WARNING:* Packages are retrieved from the dpkg 'avail' list. 
+  To generate (or update) this list after 'apt-get update' has been 
+  performed, use the 'PackageManRefresh' command.
+
+-----------------------------------------------------------------------------
+                                                           *:PackageManInstall*
+:[m[,n]]|PackageManInstall|
+
+  Mark package(s) on line _m_ to _n_ as "to be installed".  This will
+  show an **'i'** next to the package name if the package is not already 
+  installed.
+
+                                                            *:PackageManRemove*
+:[m[,n]]|PackageManRemove|
+
+  Mark package(s) on line 'm' to 'n' as "to be uninstalled".
+  Once the uninstallation is complete, many packages leave their 
+  configuration behind, in case they are reinstalled.
+  These show up marked with an 'r'.    To completely purge these 
+  packages, use the Purge command below
+
+                                                             *:PackageManPurge*
+:[m[,n]]|PackageManPurge|
+
+  Mark package(s) on line _m_ to _n_ as "to be purged".
+  A package can be purged whether it is installed, or has been recently 
+  removed but left configuration files behind.
+  Once purged, the package will no longer be visible in the package list.
+  This will show an 'p' next to the package name.
+
+                                                              *:PackageManHold*
+:[m[,n]]|PackageManHold|
+
+  Mark package(s) on line _m_ to _n_ as "to be held".
+  A package in the _hold_ state will never upgrade automatically via 
+  apt-get dist-upgrade.  This will show an 'h' next to the package 
+  name.
+
+-----------------------------------------------------------------------------
+                                                            *:PackageManRepeat*
+:|PackageManRepeat|
+
+  Repeat the last command.   After executing 'PackageManInstall' for
+  example, pressing a key bound to _PackageManRepeat_ will cause subsequent
+  packages to be marked for installation.  This will move to the next line 
+  after marking the package.
+-----------------------------------------------------------------------------
+                                                              *:PackageManInfo*
+:|PackageManInfo|
+
+  Display detailed information about the package in the VIM preview window. 
+  Executing this a second time on the same package will close the preview 
+  window.  Executing this on another package will update the preview window.
+-----------------------------------------------------------------------------
+                                                              *:PackageManUndo*
+:|PackageManUndo|
+
+  Completely undo the last change.  If a number of packages are marked 
+  for install, this will reset them to their original state.
+
+  Note: If you commit the changes, the you will need to commit the undo
+  for it to have any effect. When marking a package for install, dependencies
+  are automatically marked for installation.  Toggling the Install will only
+  reset the package you toggle.  Undo however, will reset the package and all
+  dependencies.
+-----------------------------------------------------------------------------
+                                                          *:PackageManPurgeAll*
+:|PackageManPurgeAll|
+
+  Where packages are visible in the **'r'** or removed state, this will
+  mark all to be purged.  You must commit this before it will take effect.
+-----------------------------------------------------------------------------
+                                                          *:PackageManNextMark*
+                                                          *:PackageManPrevMark*
+:|PackageManNextMark|
+:|PackageManPrevMark|
+
+  Navigate to the next or previous block of marked packages.
+-----------------------------------------------------------------------------
+                                                           *:PackageManRefresh*
+:|PackageManRefresh|
+
+  Using the _apt-get_ utility, this will retrieve the details of all known
+  packages and import them.  This allows 'PackageMan!' to accurately
+  display uninstalled packages.
+
+                                                              *:PackageManView*
+:|PackageManView|
+
+  Display a preview of all changes which are pending for the next commit.
+
+                                                           *:PackageManExecute*
+:|PackageManExecute|
+
+  Commit all changes and execute the command `apt-get dselect-upgrade`
+  to trigger the installation/removal of packages.
+
+=============================================================================
+KEY BINDINGS                                              *packageman-bindings*
+
+Default key bindings are as follows:
+
+Commands for Adding and Removing Packages                           *I* *R* *D* *P* *H*
+
+In Normal and Visual modes:
+
+    `I`          Mark a package for installation   (|PackageManInstall|)
+    `R` or `D`     Mark a package for removal        (|PackageManRemove|)
+    `P`          Mark a package for purging        (|PackageManPurge|)
+    `H`          Mark a package for holding        (|PackageManHold|)
+
+Commands for reviewing package selection                        *V* *E* *U* *<space>*
+                                                                  *]c* *[c* *]s* *[s*
+In Normal mode only:
+
+    `V`          Preview the selected actions      (|PackageManView|)
+    `E`          Execute the selected actions      (|PackageManExecute|)
+    `U` or `u`     Undo the last selection action    (|PackageManUndo|)
+    `<Space>`    Repeat the last selection action  (|PackageManRepeat|)
+                                                 (|PackageManNextMark|) 
+    `]s` or `]c`   Navigate to the next group of marked packages
+                                                 (|PackageManPrevMark|) 
+    `[s` or `[c`   Navigate to the previous group of marked packages
+
+=============================================================================
+PERFORMANCE                                            *packageman-performance*
+
+When using PackageMan to manage installed packages, things should be nice
+and snappy with even a few thousand installed packages.
+
+However... when using PackageMan! with the APT cache of all possible
+packages, things get a tad slow. The problem lies in how a complete APT
+cache currently has almost 50,000 packages, and PackageMan will be
+managing potentially thousands of signs.
+
+Hopefully this can be resolved with performance tweaks.. Most of the
+issues occur during initial loading due to the overhead of parsing the
+package data.
+
+=============================================================================
+LICENSE                                                    *packageman-license*
+
+GPLv3
+
+ vim:tw=78:ts=8:ft=help:norl:

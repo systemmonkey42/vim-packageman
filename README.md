@@ -1,11 +1,37 @@
 
-# vim-packageman
+# VIM-PackageMan
 
-Package management for Ubuntu is already pretty simple, with apt-get, apt-cache, apt-config
+Simple and lightweight Ubuntu/Debian package management from within VIM
 
 This package provides an interface for selecting actions on packages which are either already installed
 or available to install
 
+# Features
+
+*  Simple vimscript only implementation.
+*  Requires only `dpkg-query` to retrieve package information, and `dpkg` to store changes.
+*  Highlights package.
+*  Understands the need to preserve __essential__ packages, and highlights them appropriately
+*  Supports previewing and saving the package selection
+*  Saves the package selection change on write and will show the saved state on load
+*  Uses bash, awk and sort under the covers to speed up text processing)
+
+# Installation
+
+This plugin follows the standard runtime path structure, and as such it can be installed with a variety of plugin managers:
+
+| Plugin&nbsp;Manager | Install with... |
+| ------------- | ------------- |
+| [Pathogen][11] | `git clone https://github.com/systemmonkey42/vim-packageman ~/.vim/bundle/vim-packageman`<br/>Remember to run `:Helptags` to generate help tags |
+| [NeoBundle][12] | `NeoBundle 'systemmonkey42/vim-packageman'` |
+| [Vundle][13] | `Plugin 'systemmonkey42/vim-packageman'` |
+| [Plug][40] | `Plug 'systemmonkey42/vim-packageman'` |
+| [VAM][22] | `call vam#ActivateAddons([ 'vim-packageman' ])` |
+| [Dein][52] | `call dein#add('systemmonkey42/vim-packageman')` |
+| manual | copy all of the files into your `~/.vim` directory |
+
+
+# Commands
 
 The following commands are available:
 
@@ -14,15 +40,16 @@ The following commands are available:
   Initiates the PackageMan plugin, loading all package information and displaying the package editor window.
   The default behaviour is to use the list of installed packages.
 
-  Use **Packageman!** to use the list of _available_ packages.  This includes all installed, and net yet installed
+  Use **Packageman!** to use the list of _available_ packages.  This includes all installed, and not yet installed
   packages available to apt-get.
 
-  *WARNING:* Packages are retrieved from the dpkg 'avail' list.   To generate this list (or update it if
+  *WARNING:* Packages are retrieved from the dpkg 'avail' list.   To generate (or update) this list after
   apt-get&nbsp;update has been performed, use the [PackageManRefresh](#refresh) command.
 
 - [m[,n]]PackageManInstall
 
-  Mark package(s) on line _m_ to _n_ as "to be installed".
+  Mark package(s) on line _m_ to _n_ as "to be installed".  This will show an **'i'** next to the package name if the
+  package is not already installed.
 
 - [m[,n]]PackageManRemove
 
@@ -34,224 +61,107 @@ The following commands are available:
 
   Mark package(s) on line _m_ to _n_ as "to be purged".
   A package can be purged whether it is installed, or has been recently removed but left configuration files behind.
-  Once purged, the package will no longer be visible in the package list.
+  Once purged, the package will no longer be visible in the package list.  This will show an **'p'** next to the package name.
 
 - [m[,n]]PackageManHold
 
+  Mark package(s) on line _m_ to _n_ as "to be held".
+  A package in the _hold_ state will never upgrade automatically via apt-get dist-upgrade.  This will show an **'h'** next
+  to the package name.
+
 - PackageManRepeat
+
+  Repeat the last command.   After executing _PackageManInstall_ for example, pressing a key bound to _PackageManRepeat_ will cause subsequent packages to be marked for installation.  This will move to the next line after marking the package.
+
 - PackageManInfo
+
+  Display detailed information about the package in the VIM preview window.  Executing this a second time on the same package will
+  close the preview window.  Executing this on another package will update the preview window.
 
 - PackageManUndo
 
+  Completely undo the last change.  If a number of packages are marked for install, this will reset them to their original state.
+  Note that if you commit the changes, the you will need to commit the undo for it to have any effect.
+  When marking a package for install, dependencies are automatically marked for installation.  Toggling the Install will only 
+  reset the package you toggle.  Undo however, will reset the package and all dependencies.
+
 - PackageManPurgeAll
 
-- PackageManNextMark
-- PackageManPrevMark
+  Where packages are visible in the **'r'** or removed state, this will mark all to be purged.  You must commit this before
+  it will take effect.
+
+- PackageManNextMark and PackageManPrevMark
+
+  Navigate to the next or previous block of marked packages.
 
 - <a name="refresh"></a>PackageManRefresh
 
-- PackageManRefresh
+  Using the _apt-get_ utility, this will retrieve the details of all known packages and import them.  This allows 
+  _PackageMan!_ to accurately display uninstalled packages.
 
 - PackageManView
+
+  Display a preview of all changes which are pending for the next commit.
+
 - PackageManExecute
 
-# vim-packageman
---------------
+  Commit all changes and execute the command `apt-get dselect-upgrade` to trigger the installation/removal of packages.
 
-Simple and lightweight Ubuntu/Debian package management from within VIM
+# Key Bindings
 
-This package provides an interface for selecting actions on packages which are either already installed
-or available to install.
+Default key bindings are as follows:
 
-# Features
+Normal Mode|Action
+----------:|------
+I|PackageManInstall
+R|PackageManRemove
+D|PackageManRemove (mnemonic: delete package)
+P|PackageManPurge
+H|PackageManHold
+V|PackageManView
+E|PackageManExecute
+U or u|PackageManUndo
+&lt;Space&gt;|PackageManRepeat
+]s or ]c|PackageManNextMark
+[s or [c|PackageManPrevMark
 
-*  Simple vimscript only implementation
-*  Requires only `dpkg-query` to retrieve package information, and `dpkg` to store changes.
-*  Highlights package
-*  Understands the need to preserve __essential__ packages, and highlights them appropriately
-*  Supports previewing and saving the package selection
-*  Saves the package selection change on write
+Visual Mode|Action
+----------:|------
+I|PackageManInstall
+R|PackageManRemove
+D|PackageManRemove (mnemonic: delete package)
+P|PackageManPurge
+H|PackageManHold
 
-# Installation
 
 # Configuration
+
+Find everything you need here;
+
 `:help packageman`
 
-# Commands
+By default, packages which are removed, but maintain their configuration files on disk, are marked 'removed', while a fully uninstalled package will simply disappear.
 
-The following commands are available:
+Use the following global to hide packages in the 'removed' state, as if they were completely gone.
 
-PackageMan
-
-* PackageManHold
-* PackageManInstall
-* PackageManPurge
-* PackageManRemove
-* PackageManRepeat
-
-* PackageManUndo
-*
-* PackageManPurgeAll
-*
-* PackageManNextMark
-* PackageManPrevMark
-*
-* PackageManRefresh
-*
-* PackageManView
-* PackageManExecute
-
-# Default Mappings
-
-# Customization
+`let g:packageman_hide_removed = 1`
 
 # FAQ
 
-
-# Features
-
-#### whitespace
-![image](https://f.cloud.github.com/assets/306502/962401/2a75385e-04ef-11e3-935c-e3b9f0e954cc.png)
-
-## Configurable and extensible
-
-#### Fine-tuned configuration
-
-Every section is composed of parts, and you can reorder and reconfigure them at will.
-
-![image](https://f.cloud.github.com/assets/306502/1073278/f291dd4c-14a3-11e3-8a83-268e2753f97d.png)
-
-Sections can contain accents, which allows for very granular control of visuals (see configuration [here](https://github.com/vim-airline/vim-airline/issues/299#issuecomment-25772886)).
-
-![image](https://f.cloud.github.com/assets/306502/1195815/4bfa38d0-249d-11e3-823e-773cfc2ca894.png)
-
-#### Extensible pipeline
-
-Completely transform the statusline to your liking.  Build out the statusline as you see fit by extracting colors from the current colorscheme's highlight groups.
-
-![allyourbase](https://f.cloud.github.com/assets/306502/1022714/e150034a-0da7-11e3-94a5-ca9d58a297e8.png)
-
-# Rationale
-
-There's already [powerline][2], why yet another statusline?
-
-*  100% vimscript; no python needed.
-
-What about [vim-powerline][1]?
-
-*  vim-powerline has been deprecated in favor of the newer, unifying powerline, which is under active development; the new version is written in python at the core and exposes various bindings such that it can style statuslines not only in vim, but also tmux, bash, zsh, and others.
-
-# Where did the name come from?
-
-I wrote the initial version on an airplane, and since it's light as air it turned out to be a good name.  Thanks for flying vim!
-
-# Installation
-
-This plugin follows the standard runtime path structure, and as such it can be installed with a variety of plugin managers:
-
-| Plugin Manager | Install with... |
-| ------------- | ------------- |
-| [Pathogen][11] | `git clone https://github.com/vim-airline/vim-airline ~/.vim/bundle/vim-airline`<br/>Remember to run `:Helptags` to generate help tags |
-| [NeoBundle][12] | `NeoBundle 'vim-airline/vim-airline'` |
-| [Vundle][13] | `Plugin 'vim-airline/vim-airline'` |
-| [Plug][40] | `Plug 'vim-airline/vim-airline'` |
-| [VAM][22] | `call vam#ActivateAddons([ 'vim-airline' ])` |
-| [Dein][52] | `call dein#add('vim-airline/vim-airline')` |
-| manual | copy all of the files into your `~/.vim` directory |
-
-# Configuration
-
-`:help airline`
-
-The default setting of 'laststatus' is for the statusline to not appear until a split is created. If you want it to appear all the time, add the following to your vimrc:
-`set laststatus=2`
-
-# Integrating with powerline fonts
-
-For the nice looking powerline symbols to appear, you will need to install a patched font.  Instructions can be found in the official powerline [documentation][20].  Prepatched fonts can be found in the [powerline-fonts][3] repository.
-
-Finally, you can add the convenience variable `let g:airline_powerline_fonts = 1` to your vimrc which will automatically populate the `g:airline_symbols` dictionary with the powerline symbols.
-
-# FAQ
-
-Solutions to common problems can be found in the [Wiki][27].
+- This is not much of an FAQ
 
 # Performance
 
-Whoa!  Everything got slow all of a sudden...
+When using _PackageMan_ to manage installed packages, things should be nice and snappy with even a few
+thousand installed packages.
 
-vim-airline strives to make it easy to use out of the box, which means that by default it will look for all compatible plugins that you have installed and enable the relevant extension.
+However... when using _PackageMan!_ with the APT cache of all possible packages, things get a tad slow.
+The problem lies in how a complete APT cache currently has almost 50,000 packages, and PackageMan will be managing
+potentially thousands of signs.
 
-Many optimizations have been made such that the majority of users will not see any performance degradation, but it can still happen.  For example, users who routinely open very large files may want to disable the `tagbar` extension, as it can be very expensive to scan for the name of the current function.
-
-The [minivimrc][7] project has some helper mappings to troubleshoot performance related issues.
-
-If you don't want all the bells and whistles enabled by default, you can define a value for `g:airline_extensions`.  When this variable is defined, only the extensions listed will be loaded; an empty array would effectively disable all extensions.
-
-# Screenshots
-
-A full list of screenshots for various themes can be found in the [Wiki][14].
-
-# Maintainers
-
-The project is currently being maintained by [Bailey Ling][41], [Christian Brabandt][42], and [Mike Hartington][44].
-
-If you are interested in becoming a maintainer (we always welcome more maintainers), please [go here][43].
+Hopefully this can be resolved with performance tweaks.. Most of the issues occur during initial loading due to
+the overhead of parsing the package data.
 
 # License
 
-MIT License. Copyright (c) 2013-2016 Bailey Ling.
-
-[1]: https://github.com/Lokaltog/vim-powerline
-[2]: https://github.com/Lokaltog/powerline
-[3]: https://github.com/Lokaltog/powerline-fonts
-[4]: https://github.com/tpope/vim-fugitive
-[5]: https://github.com/scrooloose/syntastic
-[6]: https://github.com/bling/vim-bufferline
-[7]: https://github.com/bling/minivimrc
-[8]: http://en.wikipedia.org/wiki/Open/closed_principle
-[9]: https://github.com/Shougo/unite.vim
-[10]: https://github.com/ctrlpvim/ctrlp.vim
-[11]: https://github.com/tpope/vim-pathogen
-[12]: https://github.com/Shougo/neobundle.vim
-[13]: https://github.com/gmarik/vundle
-[14]: https://github.com/vim-airline/vim-airline/wiki/Screenshots
-[15]: https://github.com/techlivezheng/vim-plugin-minibufexpl
-[16]: https://github.com/sjl/gundo.vim
-[17]: https://github.com/mbbill/undotree
-[18]: https://github.com/scrooloose/nerdtree
-[19]: https://github.com/majutsushi/tagbar
-[20]: https://powerline.readthedocs.org/en/master/installation.html#patched-fonts
-[21]: https://bitbucket.org/ludovicchabant/vim-lawrencium
-[22]: https://github.com/MarcWeber/vim-addon-manager
-[23]: https://github.com/altercation/solarized
-[24]: https://github.com/chriskempson/tomorrow-theme
-[25]: https://github.com/tomasr/molokai
-[26]: https://github.com/nanotech/jellybeans.vim
-[27]: https://github.com/vim-airline/vim-airline/wiki/FAQ
-[28]: https://github.com/chrisbra/csv.vim
-[29]: https://github.com/airblade/vim-gitgutter
-[30]: https://github.com/mhinz/vim-signify
-[31]: https://github.com/jmcantrell/vim-virtualenv
-[32]: https://github.com/chriskempson/base16-vim
-[33]: https://github.com/vim-airline/vim-airline/wiki/Test-Plan
-[34]: http://eclim.org
-[35]: https://github.com/edkolev/tmuxline.vim
-[36]: https://github.com/edkolev/promptline.vim
-[37]: https://github.com/gcmt/taboo.vim
-[38]: https://github.com/szw/vim-ctrlspace
-[39]: https://github.com/tomtom/quickfixsigns_vim
-[40]: https://github.com/junegunn/vim-plug
-[41]: https://github.com/bling
-[42]: https://github.com/chrisbra
-[43]: https://github.com/vim-airline/vim-airline/wiki/Becoming-a-Maintainer
-[44]: https://github.com/mhartington
-[45]: https://github.com/vim-airline/vim-airline/commit/d7fd8ca649e441b3865551a325b10504cdf0711b
-[46]: https://github.com/vim-airline/vim-airline#themes
-[47]: https://github.com/mildred/vim-bufmru
-[48]: https://github.com/ierton/xkb-switch
-[49]: https://github.com/vovkasm/input-source-switcher
-[50]: https://github.com/jreybert/vimagit
-[51]: https://github.com/Shougo/denite.nvim
-[52]: https://github.com/Shougo/dein.vim
-[53]: https://github.com/lervag/vimtex
+GPLv3
