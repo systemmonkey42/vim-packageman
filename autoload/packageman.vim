@@ -1,52 +1,55 @@
 " PackageMan
 
 function! packageman#ParsePkgList(pkgs) abort
-    let l:detail = {}
-    let l:i = 1
+    let l:pkgs = []
+    let l:ref = {}
     let l:hide = b:hide_removed
-    call map(a:pkgs,'split(v:val,''\t'')')
+    call map(map(a:pkgs,'split(v:val,''\t'')'), '{
+                \ "name":v:val[0],
+                \ "version":v:val[2],
+                \ "essential":v:val[3],
+                \ "depends":map(split(get(v:val,4,''''),'',\s*''),''split(v:val,'''' '''')[0]''),
+                \ "state":tolower(v:val[1][0]),
+                \ "current":v:val[1][1],
+                \ "mark":tolower(v:val[1][0]),
+                \ "line": 0}'
+                \ )
+
+    let l:i = 0
     for l:pkg in a:pkgs
-        if !has_key(l:detail,l:pkg[1])
-            let [ l:state, l:current ] = [ tolower(l:pkg[0][0]), l:pkg[0][1] ]
-            if l:hide == 1 && l:state ==? 'r' && l:current !=? 'i'
-                "echo 'hiding '.l:pkg[1]
-            else
-                let l:mark = tolower(l:state)
-                let l:deps = split(get(l:pkg,4,""),',\s*')
-                call map(l:deps,'split(v:val,'' '')[0]')
-                let l:detail[l:pkg[1]] = { "name": l:pkg[1], "version": l:pkg[2], "essential": l:pkg[3], "depends": l:deps, "state": l:state, "mark": l:mark, "current": l:current, "line": l:i }
-                let l:i += 1
-            endif
+        if l:hide == 1 && l:pkg["state"] ==? 'r' && l:pkg["current"] !=? 'i'
+            "echo 'hiding '.l:pkg[1]
+        else
+            let l:ref[l:pkg["name"]] = l:i
+            let l:pkgs += [ l:pkg ]
+            let l:i += 1
+            let l:pkg["line"] = l:i
         endif
     endfor
-    return l:detail
+    return [ l:pkgs, l:ref ]
 endfunction
 
 function! packageman#LoadAvailable() abort
     " 'dpkg --get-selections *' expands the wildcard on the commandline due to some internal
     " bug.  use bash -f -c 'dpkg --get-selections *' to prevent this happening, and allow
     " the wildcard to apply to the package database instead.
-    let l:avail = systemlist( "awk -F': ' 'BEGIN{cmd=\"bash -f -c \\\"dpkg --get-selections *\\\"\";while(cmd|getline){split($0,s,\" \");split(s[1],p,\":\");pkg=p[1];state[pkg]=substr(s[2],1,1);if(state[pkg]==\"d\"){state[pkg]=\"r\"}}}/^$/{if(n[\"Essential\"]==\"\"){n[\"Essential\"]=\"no\"};if(state[n[\"Package\"]]==\"\"){state[n[\"Package\"]]=\"r\"}print state[n[\"Package\"]]\"u \\t\"n[\"Package\"]\"\\t\"n[\"Version\"]\"\\t\"n[\"Essential\"]\"\\t\"n[\"Depends\"];delete n;n[\"Essential\"]=\"no\";next}{n[$1]=$2}' /var/lib/dpkg/available\|sort -k2,2" )
+    let l:avail = systemlist( "awk -F': ' 'BEGIN{cmd=\"bash -f -c \\\"dpkg --get-selections *\\\"\";while(cmd|getline){split($0,s,\" \");split(s[1],p,\":\");pkg=p[1];state[pkg]=substr(s[2],1,1);if(state[pkg]==\"d\"){state[pkg]=\"r\"}}}/^$/{if(n[\"Essential\"]==\"\"){n[\"Essential\"]=\"no\"};if(state[n[\"Package\"]]==\"\"){state[n[\"Package\"]]=\"r\"}if(n[\"Package\"]!=prev){print n[\"Package\"]\"\\t\"state[n[\"Package\"]]\"u \\t\"n[\"Version\"]\"\\t\"n[\"Essential\"]\"\\t\"n[\"Depends\"];prev=n[\"Package\"]};delete n;n[\"Essential\"]=\"no\";next}{n[$1]=$2}' /var/lib/dpkg/available\|sort" )
     return packageman#ParsePkgList(l:avail)
 endfunction
 
 function! packageman#LoadInstalled() abort
-    let l:installed = systemlist("dpkg-query -W --showformat '${db:Status-Abbrev}\\t${Package}\\t${Version}\\t${Essential}\\t${Depends}\\n'")
+    let l:installed = systemlist("dpkg-query -W --showformat '${Package}\\t${db:Status-Abbrev}\\t${Version}\\t${Essential}\\t${Depends}\\n'")
     return packageman#ParsePkgList(l:installed)
 endfunction
 
 function! packageman#CalcDependencies() abort
-    let l:deps = {}
-    for l:pkg in values(b:pkgs)
-        if has_key(l:pkg,'depends')
-            for l:dep in l:pkg['depends']
-                if has_key(l:deps,l:dep)
-                    let l:deps[l:dep] += [ l:pkg['name'] ]
-                else
-                    let l:deps[l:dep] = [ l:pkg['name'] ]
-                endif
-            endfor
-        endif
+    let l:deps = map(copy(b:ref),'[]')
+    for l:pkg in b:pkgs
+        for l:dep in l:pkg['depends']
+            if has_key(l:deps,l:dep)
+                let l:deps[l:dep] += [ l:pkg['name'] ]
+            endif
+        endfor
     endfor
     return l:deps
 endfunction
@@ -105,16 +108,16 @@ function! packageman#SetSelections() abort
     return len(l:pkgs)
 endfunction
 
-function! packageman#SignSelections() abort
+function! packageman#SignSelections(...) abort
     let l:ignored = (b:package_source ==? 'installed')? 'i' : 'r'
-    let l:filtered = filter(values(b:pkgs), 'v:val["mark"] !=? v:val["state"] || v:val["state"] !=? '''.l:ignored.'''')
+    let l:filtered = filter(copy(b:pkgs), 'v:val["mark"] !=? v:val["state"] || v:val["state"] !=? '''.l:ignored.''' || (has_key(b:marks,v:val["line"]) && get(v:val,"mark") !=# b:marks[v:val["line"]])')
     for l:pkg in l:filtered
         let l:mark = l:pkg['mark']
         if l:pkg['essential'] !=? 'no'
             let l:mark = toupper(l:mark)
         endif
         if l:pkg['state'] !=? l:mark || l:pkg['state'] !=? l:ignored
-            if !has_key(b:marks,l:pkg['line']) || b:marks[l:pkg['line']] !=? l:mark
+            if !has_key(b:marks,l:pkg['line']) || get(b:marks,l:pkg['line'],'') !=? l:mark
                 call packageman#ToggleSign(l:pkg['line'], l:mark)
             endif
         else
@@ -123,23 +126,10 @@ function! packageman#SignSelections() abort
     endfor
 endfunction
 
-function! s:packagemanDictSort(a,b) abort
-    if a:a['line'] < a:b['line']
-        return -1
-    elseif a:b['line'] < a:a['line']
-        return 1
-    else
-        return 0
-    endif
-endfunction
-
 function! packageman#LoadBuffer() abort
-    let l:len = sort(values(map(copy(b:pkgs),'len(v:val["name"])')),'n')[-1]
-    let l:len += 4
-    let l:buffer = map(sort(values(b:pkgs),
-                \ function('s:packagemanDictSort')),
-                \ 'printf("%-*s%s",l:len, v:val[''name''], v:val[''version''])')
-    call setline(1,l:buffer)
+    let l:len = max(map(copy(b:pkgs),'len(v:val["name"])')) + 4
+    let l:buffer = map(copy(b:pkgs),'printf("%-*s%s",l:len, v:val[''name''], v:val[''version''])')
+    return setline(1,l:buffer)
 endfunction
 
 function! packageman#UpdateAvailable() abort
@@ -155,9 +145,8 @@ endfunction
 
 function! packageman#PackageInfo() abort
     " Get package name from current line of buffer
-    let l:pkg = split(getline('.'),'\s\+')[0]
     let l:pos = line('w0')
-    let l:data = b:pkgs[l:pkg]
+    let l:data = b:pkgs[line('.')-1]
     " Detect if preview windows closed for other reasons..
     let l:pvw = -1
     for l:nr in range(1,winnr('$'))
@@ -189,6 +178,7 @@ function! packageman#PackageInfo() abort
         " Clear the window
         exe '%d'
         if !has_key(l:data,'packageinfo')
+            let l:pkg = l:data['name']
             echon 'Getting description for package '.l:pkg
             let l:data['packageinfo'] = systemlist('dpkg-query -W --showformat=''** *${Package}* `${Version}`\n\nDepends on ${Depends}~\n\n${Description}\n'' '.l:pkg)
         else
@@ -210,11 +200,10 @@ endfunction
 
 function! packageman#Load() abort
     if exists('b:package_source') && b:package_source !=? 'installed'
-        let b:pkgs = packageman#LoadAvailable()
+        let [ b:pkgs, b:ref ] = packageman#LoadAvailable()
     else
-        let b:pkgs = packageman#LoadInstalled()
+        let [ b:pkgs, b:ref ] = packageman#LoadInstalled()
     endif
-    let b:deps =  packageman#CalcDependencies()
     let b:marks = {}
     let b:last_mark = ''
     let b:mark_set = -1
@@ -228,7 +217,11 @@ function! packageman#Load() abort
     setlocal nomodifiable
     setlocal nomodified
     setlocal iskeyword+=45-47
-    call packageman#SignSelections()
+    if has('timers')
+        call timer_start(1000,function('packageman#SignSelections'))
+    else
+        call packageman#SignSelections()
+    endif
 endfunction
 
 function! packageman#Commit() abort
@@ -287,9 +280,12 @@ function! packageman#Init(bang) abort
     command! -buffer PackageManInfo call packageman#PackageInfo()
 
     nnoremap <silent> <buffer> D :PackageManRemove<CR>
+    nnoremap <silent> <buffer> d :PackageManRemove<CR>
     nnoremap <silent> <buffer> R :PackageManRemove<CR>
+    nnoremap <silent> <buffer> r :PackageManRemove<CR>
     nnoremap <silent> <buffer> P :PackageManPurge<CR>
     nnoremap <silent> <buffer> I :PackageManInstall<CR>
+    nnoremap <silent> <buffer> i :PackageManInstall<CR>
     nnoremap <silent> <buffer> H :PackageManHold<CR>
     nnoremap <silent> <buffer> V :PackageManView<CR>
     nnoremap <silent> <buffer> E :PackageManExecute<CR>
@@ -308,9 +304,12 @@ function! packageman#Init(bang) abort
     nnoremap <silent> <buffer> <F1> :help packageman-bindings<CR>
 
     vnoremap <silent> <buffer> D :PackageManRemove<CR>
+    vnoremap <silent> <buffer> d :PackageManRemove<CR>
     vnoremap <silent> <buffer> R :PackageManRemove<CR>
+    vnoremap <silent> <buffer> r :PackageManRemove<CR>
     vnoremap <silent> <buffer> P :PackageManPurge<CR>
     vnoremap <silent> <buffer> I :PackageManInstall<CR>
+    vnoremap <silent> <buffer> i :PackageManInstall<CR>
     vnoremap <silent> <buffer> H :PackageManHold<CR>
 
     " Setting filetype triggers immediate autocommands
@@ -328,6 +327,9 @@ endfunction
 function! packageman#SetMark(mark,start,end) abort
     let b:mark_set = -1
     let b:mark_force = 0
+    if !exists('b:deps')
+        let b:deps =  packageman#CalcDependencies()
+    endif
     return packageman#MarkRange(a:mark,a:start,a:end)
 endfunction
 
@@ -336,56 +338,79 @@ function! packageman#MarkRange(mark,start,end) abort
     let l:line = a:start
     let b:last_mark = a:mark
     let l:count = 0
-    while l:line <= a:end
-        let l:pkg = split(getline(l:line),'\s\+')[0]
+    let l:error = ''
+    while l:line <= a:end && l:error ==# ''
+        let l:pkg = b:pkgs[l:line-1]
         if b:mark_set < 0
-            if b:pkgs[l:pkg]['essential'] !=? 'no'
+            if l:pkg['essential'] !=? 'no'
                 let b:mark_force = 1
             endif
-            let b:mark_set = b:pkgs[l:pkg]['mark'] !=? a:mark
+            let b:mark_set = l:pkg['mark'] !=? a:mark
         endif
-        if b:pkgs[l:pkg]['essential'] ==? 'no' || b:mark_force
-            let l:new_mark = b:mark_set ? a:mark : b:pkgs[l:pkg]['state']
-            if !b:mark_set && l:new_mark == a:mark
-                if l:new_mark ==? 'p'
-                    let l:new_mark = 'r'
-                elseif l:new_mark ==? 'h' || l:new_mark ==? 'd'
-                    let l:new_mark = 'i'
-                endif
-            endif
-            if l:new_mark !=? b:pkgs[l:pkg]['mark']
-                let l:undo += [ [ l:pkg, b:pkgs[l:pkg]['mark'] ] ]
-                let b:pkgs[l:pkg]['mark'] = l:new_mark
-                let l:count += 1
-                if has_key(b:deps, l:pkg) && a:mark ==? 'r' && b:mark_set
-                    let l:deps = b:deps[l:pkg]
-                    for l:dep in l:deps
-                        if has_key(b:pkgs,l:dep)
-                            if b:pkgs[l:dep]['mark'] !=? a:mark
-                                let l:undo += [ [ l:dep, b:pkgs[l:dep]['mark'] ] ]
-                                let b:pkgs[l:dep]['mark'] = a:mark
-                                let l:count += 1
+        let l:new_mark = b:mark_set ? a:mark : l:pkg['state']
+        " if !b:mark_set && l:new_mark == a:mark
+        "     if l:new_mark ==? 'p'
+        "         let l:new_mark = 'r'
+        "     elseif l:new_mark ==? 'h' || l:new_mark ==? 'r'
+        "         let l:new_mark = 'i'
+        "     endif
+        " endif
+        if l:pkg['essential'] ==? 'no' || b:mark_force
+            if l:new_mark !=? l:pkg['mark']
+                if has_key(b:deps, l:pkg['name']) && l:new_mark ==? 'r' && b:mark_set
+                    let l:deps = [ l:pkg['name'] ]
+                    while len(l:deps) > 0 && l:error ==# ''
+                        let l:cur = remove(l:deps,0)
+                        if has_key(b:ref,l:cur)
+                            let l:x = b:ref[l:cur]
+                            if b:pkgs[l:x]['mark'] !=? l:new_mark
+                                if b:pkgs[l:x]['essential'] ==? 'no' || b:mark_force
+                                    let l:undo += [ [ l:x, b:pkgs[l:x]['mark'] ] ]
+                                    let b:pkgs[l:x]['mark'] = l:new_mark
+                                    let l:count += 1
+                                    if has_key(b:deps,l:cur)
+                                        let l:deps += b:deps[l:cur]
+                                    endif
+                                else
+                                    let l:error = l:cur
+                                endif
                             endif
                         endif
-                    endfor
-                elseif has_key(b:pkgs[l:pkg],'depends') && a:mark ==? 'i' && b:mark_set
-                    let l:deps = b:pkgs[l:pkg]['depends']
-                    for l:dep in l:deps
-                        if has_key(b:pkgs,l:dep)
-                            if b:pkgs[l:dep]['mark'] !=? a:mark
-                                let l:undo += [ [ l:dep, b:pkgs[l:dep]['mark'] ] ]
-                                let b:pkgs[l:dep]['mark'] = a:mark
+                    endwhile
+                elseif has_key(b:pkgs[l:line-1],'depends') && l:new_mark ==? 'i'
+                    let l:deps = [ l:pkg['name'] ]
+                    while len(l:deps) > 0 && l:error ==# ''
+                        let l:cur = l:deps[0]
+                        call remove(l:deps,0)
+                        if has_key(b:ref,l:cur)
+                            let l:x = b:ref[l:cur]
+                            if b:pkgs[l:x]['mark'] !=? l:new_mark
+                                let l:undo += [ [ l:x, b:pkgs[l:x]['mark'] ] ]
+                                let b:pkgs[l:x]['mark'] = l:new_mark
                                 let l:count += 1
+                                if has_key( b:pkgs[l:x],'depends' )
+                                    let l:deps += b:pkgs[l:x]['depends']
+                                endif
                             endif
                         endif
-                    endfor
+                    endwhile
+                else
+                    let l:undo += [ [ l:line-1, l:pkg['mark'] ] ]
+                    let l:pkg['mark'] = l:new_mark
+                    let l:count += 1
                 endif
             endif
         endif
         let l:line+=1
     endwhile
     if len(l:undo) > 0
-        let b:mark_undo += [ [[ line('.'),col('.') ]] + l:undo ]
+        if l:error !=# ''
+            call packageman#UndoChange(l:undo)
+            let l:count = 0
+            echo 'Failed to mark packages. '.l:error.' is an essential package.'
+        else
+            let b:mark_undo += [ [[ line('.'),col('.') ]] + l:undo ]
+        endif
     endif
     if l:count > 1
         echo l:count.' packages marked.'
@@ -397,10 +422,8 @@ endfunction
 
 function! packageman#ListMarks() abort
     let l:out = ''
-    let l:list = values(filter(copy(b:pkgs),'v:val["state"] !=# v:val["mark"] && v:val["mark"] !=# "E"'))
-    "let l:len = sort(map(copy(l:list),'len(v:val["name"])'),'n')[-1]
+    let l:list = filter(copy(b:pkgs),'v:val["state"] !=# v:val["mark"] && v:val["mark"] !=# "E"')
     for l:pkg in l:list
-        "let l:out .= printf("%-*s %s\n", l:len, l:pkg['name'],l:pkg['mark'][0])
         let l:out .= printf("%s %s\n", l:pkg['mark'][0], l:pkg['name'])
     endfor
     echo l:out
@@ -451,17 +474,20 @@ function! packageman#NextMark() abort
     endif
 endfunction
 
+function! packageman#UndoChange(change) abort
+    for l:fix in a:change
+        let b:pkgs[l:fix[0]]['mark'] = l:fix[1]
+    endfor
+endfunction
+
 function! packageman#Undo() abort
     if len(b:mark_undo) == 0
         echo "Already at oldest change"
     else
-        let l:undo = b:mark_undo[-1]
-        call remove(b:mark_undo,-1)
-        let l:pos = l:undo[0]
-        for l:fix in l:undo[1:]
-            let b:pkgs[l:fix[0]]['mark'] = l:fix[1]
-        endfor
+        let l:undo = remove(b:mark_undo,-1)
+        let l:pos = remove(l:undo,0)
+        call packageman#UndoChange(l:undo)
         call cursor(l:pos[0],l:pos[1])
+        call packageman#SignSelections()
     endif
-    call packageman#SignSelections()
 endfunction
