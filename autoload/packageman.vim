@@ -23,8 +23,9 @@ pkgs[0:] = map(
     "essential" : x[3],
     "dep": x[4],
     "deps": x[4],
-    "depends" : map(
-        lambda x: x.split(' ')[0], re.split(r',\s*',x[4])),
+    "depends" : filter(
+        lambda x: x!= '', map(
+        lambda x: re.split(r'[: ]',x)[0], re.split(r',\s*',x[4]))),
     "state": x[1][0].lower(),
     "mark": x[1][0].lower(),
     "current": x[1][1],
@@ -73,7 +74,7 @@ function! packageman#LoadAvailable() abort
     " 'dpkg --get-selections *' expands the wildcard on the commandline due to some internal
     " bug.  use bash -f -c 'dpkg --get-selections *' to prevent this happening, and allow
     " the wildcard to apply to the package database instead.
-    let l:avail = systemlist( "awk -F': ' 'BEGIN{cmd=\"bash -f -c \\\"dpkg --get-selections *\\\"\";while(cmd|getline){split($0,s,\" \");split(s[1],p,\":\");pkg=p[1];state[pkg]=substr(s[2],1,1);if(state[pkg]==\"d\"){state[pkg]=\"r\"}}}/^$/{if(n[\"Essential\"]==\"\"){n[\"Essential\"]=\"no\"};if(state[n[\"Package\"]]==\"\"){state[n[\"Package\"]]=\"r\"}if(n[\"Package\"]!=prev){print n[\"Package\"]\"\\t\"state[n[\"Package\"]]\"u \\t\"n[\"Version\"]\"\\t\"n[\"Essential\"]\"\\t\"n[\"Depends\"];prev=n[\"Package\"]};delete n;n[\"Essential\"]=\"no\";next}{n[$1]=$2}' /var/lib/dpkg/available\|sort" )
+    let l:avail = systemlist( "awk -F': ' 'BEGIN{cmd=\"bash -f -c \\\"dpkg --get-selections *\\\"\";while(cmd|getline){split($0,s,\" \");split(s[1],p,\":\");pkg=p[1];state[pkg]=substr(s[2],1,1);if(state[pkg]==\"d\"){state[pkg]=\"r\"}}}/^$/{if(n[\"Essential\"]==\"\"){n[\"Essential\"]=\"no\"};if(state[n[\"Package\"]]==\"\"){state[n[\"Package\"]]=\"r\"}if(n[\"Package\"]!=prev){print n[\"Package\"]\"\\t\"state[n[\"Package\"]]\"u \\t\"n[\"Version\"]\"\\t\"n[\"Essential\"]\"\\t\"n[\"Depends\"];prev=n[\"Package\"]};delete n;n[\"Essential\"]=\"no\";next}{n[$1]=$2}' /var/lib/dpkg/available\|LC_ALL=C sort" )
     return packageman#ParsePkgList(l:avail)
 endfunction
 
@@ -83,15 +84,28 @@ function! packageman#LoadInstalled() abort
 endfunction
 
 function! packageman#CalcDependencies() abort
-    let l:deps = map(copy(b:ref),'[]')
+    if has('python')
+        python << EOF
+import vim
+p = vim.current.buffer.vars['pkgs']
+d = { x: [] for x in vim.current.buffer.vars['ref'].keys() }
+for k in p:
+    for dep in k['depends']:
+        if dep in d:
+            d[dep].append( k["name"] )
+vim.current.buffer.vars['deps'] = d
+del d
+EOF
+    else
+    let b:deps = map(copy(b:ref),'[]')
     for l:pkg in b:pkgs
         for l:dep in l:pkg['depends']
-            if has_key(l:deps,l:dep)
-                let l:deps[l:dep] += [ l:pkg['name'] ]
+            if has_key(b:deps,l:dep)
+                let b:deps[l:dep] += [ l:pkg['name'] ]
             endif
         endfor
     endfor
-    return l:deps
+    endif
 endfunction
 
 function! packageman#ToggleSign(line, mark) abort
@@ -150,7 +164,19 @@ endfunction
 
 function! packageman#SignSelections(...) abort
     let l:ignored = (b:package_source ==? 'installed')? 'i' : 'r'
-    let l:filtered = filter(copy(b:pkgs), 'v:val["mark"] !=? v:val["state"] || v:val["state"] !=? '''.l:ignored.''' || (has_key(b:marks,v:val["line"]) && get(v:val,"mark") !=# b:marks[v:val["line"]])')
+    if has('python')
+        let l:filtered = []
+        python << EOF
+f = vim.bindeval('l:filtered')
+i = vim.bindeval('l:ignored')
+m = vim.current.buffer.vars['marks']
+f[0:] = filter(
+    lambda x: x['mark'] != x['state'] or x['state'] != i or ((str(x['line']) in m) and (x['mark'] != m[str(x['line'])].lower())),
+    vim.current.buffer.vars['pkgs'])
+EOF
+    else
+        let l:filtered = filter(copy(b:pkgs), 'v:val["mark"] !=? v:val["state"] || v:val["state"] !=? '''.l:ignored.''' || (has_key(b:marks,v:val["line"]) && get(v:val,"mark") !=# b:marks[v:val["line"]])')
+    endif
     for l:pkg in l:filtered
         let l:mark = l:pkg['mark']
         if l:pkg['essential'] !=? 'no'
@@ -170,21 +196,30 @@ function! packageman#LoadBuffer() abort
     if has('python')
         let l:buffer = []
         python << EOF
+import vim
 p = vim.bindeval('b:pkgs')
-b = vim.bindeval('l:buffer')
-max = 0
-for key in p:
-    if max < len(key["name"]):
-        max = len(key["name"])
-max = max + 4
-b[:0] = map(
-    lambda x: "%-*s%s" % ( max, x["name"], x["version"] ), p)
+b = vim.current.buffer
+ss = vim.Function('packageman#SignSelections')
+l = max(map(lambda x: len(x["name"]), p))
+l = l + 4
+b[0:] = map(
+    lambda x: "%-*s%s" % ( l, x["name"], x["version"] ), p)
+vim.current.buffer.options['modifiable'] = 0
+vim.current.buffer.options['modified'] = 0
+ss()
 EOF
     else
         let l:len = max(map(copy(b:pkgs),'len(v:val["name"])')) + 4
         let l:buffer = map(copy(b:pkgs),'printf("%-*s%s",l:len, v:val[''name''], v:val[''version''])')
+        call setline(1,l:buffer)
+        setlocal nomodifiable
+        setlocal nomodified
+        if has('timers')
+            call timer_start(1000,function('packageman#SignSelections'))
+        else
+            call packageman#SignSelections()
+        endif
     endif
-    return setline(1,l:buffer)
 endfunction
 
 function! packageman#UpdateAvailable() abort
@@ -269,14 +304,7 @@ function! packageman#Load() abort
     setlocal modifiable
     call packageman#LoadBuffer()
     " Ensure the buffer is now read-only and won't be saved automatically when we exit
-    setlocal nomodifiable
-    setlocal nomodified
     setlocal iskeyword+=45-47
-    if has('timers')
-        call timer_start(1000,function('packageman#SignSelections'))
-    else
-        call packageman#SignSelections()
-    endif
 endfunction
 
 function! packageman#Commit() abort
@@ -383,7 +411,7 @@ function! packageman#SetMark(mark,start,end) abort
     let b:mark_set = -1
     let b:mark_force = 0
     if !exists('b:deps')
-        let b:deps =  packageman#CalcDependencies()
+        call packageman#CalcDependencies()
     endif
     return packageman#MarkRange(a:mark,a:start,a:end)
 endfunction
