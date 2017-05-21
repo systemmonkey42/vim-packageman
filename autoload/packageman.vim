@@ -1,6 +1,46 @@
 " PackageMan
 
 function! packageman#ParsePkgList(pkgs) abort
+    "debug call packageman#ParsePkgList_py(a:pkgs)
+    return has('python') ?
+                \ packageman#ParsePkgList_py(a:pkgs) :
+                \ packageman#ParsePkgList_vim(a:pkgs)
+endfunction
+
+function! packageman#ParsePkgList_py(pkgs) abort
+    let l:pkgs = a:pkgs
+    let l:ref = {}
+    let l:hide = b:hide_removed
+    python << EOF
+import vim, re
+pkgs = vim.bindeval('l:pkgs')
+ref = vim.bindeval('l:ref')
+line = 0
+pkgs[0:] = map(
+    lambda x: {
+    "name" : x[0],
+    "version" : x[2],
+    "essential" : x[3],
+    "dep": x[4],
+    "deps": x[4],
+    "depends" : map(
+        lambda x: x.split(' ')[0], re.split(r',\s*',x[4])),
+    "state": x[1][0].lower(),
+    "mark": x[1][0].lower(),
+    "current": x[1][1],
+    "line": 0
+    },
+    map( lambda x: x.split('\t'),pkgs) )
+for key in pkgs:
+    if not ref.has_key(key["name"]):
+        ref[key["name"]] = line
+        line = line + 1
+        key["line"] = line
+EOF
+    return [ l:pkgs, l:ref ]
+endfunction
+
+function! packageman#ParsePkgList_vim(pkgs) abort
     let l:pkgs = []
     let l:ref = {}
     let l:hide = b:hide_removed
@@ -10,8 +50,8 @@ function! packageman#ParsePkgList(pkgs) abort
                 \ "essential":v:val[3],
                 \ "depends":map(split(get(v:val,4,''''),'',\s*''),''split(v:val,'''' '''')[0]''),
                 \ "state":tolower(v:val[1][0]),
-                \ "current":v:val[1][1],
                 \ "mark":tolower(v:val[1][0]),
+                \ "current":v:val[1][1],
                 \ "line": 0}'
                 \ )
 
@@ -127,8 +167,23 @@ function! packageman#SignSelections(...) abort
 endfunction
 
 function! packageman#LoadBuffer() abort
-    let l:len = max(map(copy(b:pkgs),'len(v:val["name"])')) + 4
-    let l:buffer = map(copy(b:pkgs),'printf("%-*s%s",l:len, v:val[''name''], v:val[''version''])')
+    if has('python')
+        let l:buffer = []
+        python << EOF
+p = vim.bindeval('b:pkgs')
+b = vim.bindeval('l:buffer')
+max = 0
+for key in p:
+    if max < len(key["name"]):
+        max = len(key["name"])
+max = max + 4
+b[:0] = map(
+    lambda x: "%-*s%s" % ( max, x["name"], x["version"] ), p)
+EOF
+    else
+        let l:len = max(map(copy(b:pkgs),'len(v:val["name"])')) + 4
+        let l:buffer = map(copy(b:pkgs),'printf("%-*s%s",l:len, v:val[''name''], v:val[''version''])')
+    endif
     return setline(1,l:buffer)
 endfunction
 
