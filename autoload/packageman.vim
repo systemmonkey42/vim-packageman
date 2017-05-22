@@ -134,7 +134,7 @@ function! packageman#SetSelections() abort
     let l:out = ''
     " Record the changes here, so they arent applied unless dpkg is successful
     let l:changelog = []
-    let l:pkgs = values(filter(copy(b:pkgs), 'v:val["state"] !=? v:val["mark"] && v:val["mark"] !=# "E"'))
+    let l:pkgs = filter(copy(b:pkgs), 'v:val["state"] !=? v:val["mark"] && v:val["mark"] !=# "E"')
     if len(l:pkgs) > 0
         for l:pkg in l:pkgs
             if l:pkg['mark'] ==# 'r'
@@ -203,7 +203,7 @@ ss = vim.Function('packageman#SignSelections')
 l = max(map(lambda x: len(x["name"]), p))
 l = l + 4
 b[0:] = map(
-    lambda x: "%-*s%s" % ( l, x["name"], x["version"] ), p)
+    lambda x: "%s%-*s%s" % ( ( '>' if x["essential"] != "no" else '' ), l, x["name"], x["version"] ), p)
 vim.current.buffer.options['modifiable'] = 0
 vim.current.buffer.options['modified'] = 0
 ss()
@@ -237,6 +237,15 @@ function! packageman#PackageInfo() abort
     " Get package name from current line of buffer
     let l:pos = line('w0')
     let l:data = b:pkgs[line('.')-1]
+    if !exists('b:deps')
+        call packageman#CalcDependencies()
+    endif
+    if len(b:deps[l:data['name']])
+        let l:deps = 'Required by ' . join(b:deps[l:data['name']], ', ') . '~'
+    else
+        let l:deps = ''
+    endif
+
     " Detect if preview windows closed for other reasons..
     let l:pvw = -1
     for l:nr in range(1,winnr('$'))
@@ -258,7 +267,7 @@ function! packageman#PackageInfo() abort
             " - '+buffer fnameescape()' to ensure the same buffer is reloaded into the split every time
             exe 'silent topleft '.&previewheight.'split +buffer '.fnameescape('Package Info')
             " Mark the window as an unsaved, unchangable preview window
-            setlocal previewwindow
+            setlocal previewwindow nowrap
             setlocal buftype=nowrite
             setlocal filetype=help
         else
@@ -271,6 +280,12 @@ function! packageman#PackageInfo() abort
             let l:pkg = l:data['name']
             echon 'Getting description for package '.l:pkg
             let l:data['packageinfo'] = systemlist('dpkg-query -W --showformat=''** *${Package}* `${Version}`\n\nDepends on ${Depends}~\n\n${Description}\n'' '.l:pkg)
+            if l:data['essential'] !=? 'no'
+                call insert(l:data['packageinfo'], 'Essential: '.l:data['essential'].'~', 2)
+            endif
+            if l:deps !=# ''
+                call insert(l:data['packageinfo'], l:deps, 3)
+            endif
         else
             echo
         endif
@@ -367,6 +382,7 @@ function! packageman#Init(bang) abort
     nnoremap <silent> <buffer> R :PackageManRemove<CR>
     nnoremap <silent> <buffer> r :PackageManRemove<CR>
     nnoremap <silent> <buffer> P :PackageManPurge<CR>
+    nnoremap <silent> <buffer> p :PackageManPurge<CR>
     nnoremap <silent> <buffer> I :PackageManInstall<CR>
     nnoremap <silent> <buffer> i :PackageManInstall<CR>
     nnoremap <silent> <buffer> H :PackageManHold<CR>
@@ -391,6 +407,7 @@ function! packageman#Init(bang) abort
     vnoremap <silent> <buffer> R :PackageManRemove<CR>
     vnoremap <silent> <buffer> r :PackageManRemove<CR>
     vnoremap <silent> <buffer> P :PackageManPurge<CR>
+    vnoremap <silent> <buffer> p :PackageManPurge<CR>
     vnoremap <silent> <buffer> I :PackageManInstall<CR>
     vnoremap <silent> <buffer> i :PackageManInstall<CR>
     vnoremap <silent> <buffer> H :PackageManHold<CR>
@@ -431,13 +448,13 @@ function! packageman#MarkRange(mark,start,end) abort
             let b:mark_set = l:pkg['mark'] !=? a:mark
         endif
         let l:new_mark = b:mark_set ? a:mark : l:pkg['state']
-        " if !b:mark_set && l:new_mark == a:mark
-        "     if l:new_mark ==? 'p'
-        "         let l:new_mark = 'r'
-        "     elseif l:new_mark ==? 'h' || l:new_mark ==? 'r'
-        "         let l:new_mark = 'i'
-        "     endif
-        " endif
+        if !b:mark_set && l:new_mark == a:mark
+            if l:new_mark ==? 'p'
+                let l:new_mark = 'r'
+            elseif l:new_mark ==? 'h' || l:new_mark ==? 'r'
+                let l:new_mark = 'i'
+            endif
+        endif
         if l:pkg['essential'] ==? 'no' || b:mark_force
             if l:new_mark !=? l:pkg['mark']
                 if has_key(b:deps, l:pkg['name']) && l:new_mark ==? 'r' && b:mark_set
@@ -490,7 +507,7 @@ function! packageman#MarkRange(mark,start,end) abort
         if l:error !=# ''
             call packageman#UndoChange(l:undo)
             let l:count = 0
-            echo 'Failed to mark packages. '.l:error.' is an essential package.'
+            echo 'Failed to mark packages. Depends on '.l:error.' which is an essential package.'
         else
             let b:mark_undo += [ [[ line('.'),col('.') ]] + l:undo ]
         endif
