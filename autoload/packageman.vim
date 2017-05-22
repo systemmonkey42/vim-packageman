@@ -536,10 +536,8 @@ function! packageman#ListMarks() abort
 endfunction
 
 function! packageman#PurgeAll() abort
-    for l:pkg in values(b:pkgs)
-        if l:pkg['state'] ==? 'r' && l:pkg['mark'] ==? 'r'
-            let l:pkg['mark'] = 'p'
-        endif
+    for l:pkg in filter(copy(b:pkgs), 'v:val["state"] ==? "r" && v:val["mark"] ==? "r"')
+        call packageman#SetMark('p',l:pkg['line'],l:pkg['line'])
     endfor
     call packageman#SignSelections()
 endfunction
