@@ -134,7 +134,7 @@ function! packageman#SetSelections() abort
     let l:out = ''
     " Record the changes here, so they arent applied unless dpkg is successful
     let l:changelog = []
-    let l:pkgs = filter(copy(b:pkgs), 'v:val["state"] !=? v:val["mark"] && v:val["mark"] !=# "E"')
+    let l:pkgs = packageman#FilteredMarks()
     if len(l:pkgs) > 0
         for l:pkg in l:pkgs
             if l:pkg['mark'] ==# 'r'
@@ -317,12 +317,14 @@ function! packageman#Load() abort
     " b:marks is cleared so we need to ensure all existing marks are 'unplace'd
     silent exe 'sign unplace * buffer='.bufnr('%')
     setlocal modifiable
+    " Set filetype before loading the data to ensure the display doesn't flicker while formatting
+    setlocal filetype=packages
     call packageman#LoadBuffer()
     " Ensure the buffer is now read-only and won't be saved automatically when we exit
     setlocal iskeyword+=45-47
 endfunction
 
-function! packageman#Commit() abort
+function! packageman#Apply() abort
     let l:result = packageman#SetSelections()
     if l:result == 0
         echo 'No changes.'
@@ -349,9 +351,8 @@ function! packageman#Init(bang) abort
     sign define packageman_sign_U text=U linehl=LineNr
 
     augroup PackageMan
-        autocmd BufCreate,BufNew,BufRead,BufNewFile <buffer> call packageman#Load()
-        autocmd BufWriteCmd <buffer> call packageman#Commit()
-        "autocmd BufUnload <buffer> call packageman#Commit()
+        autocmd BufReadCmd <buffer> call packageman#Load()
+        autocmd BufWriteCmd <buffer> call packageman#Apply()
     augroup END
 
     setlocal buftype=acwrite
@@ -363,6 +364,9 @@ function! packageman#Init(bang) abort
         let b:hide_removed = 0
     endif
 
+    " Load initial buffer contents.
+    call packageman#Load()
+
     command! -buffer PackageManView call packageman#ListMarks()
     command! -buffer -range PackageManRemove call packageman#SetMark('r',<line1>,<line2>)
     command! -buffer -range PackageManInstall call packageman#SetMark('i',<line1>,<line2>)
@@ -371,49 +375,48 @@ function! packageman#Init(bang) abort
     command! -buffer -range PackageManRepeat call packageman#RepeatMark(<line1>,<line2>)
     command! -buffer PackageManPurgeAll call packageman#PurgeAll()
     command! -buffer PackageManRefresh call packageman#UpdateAvailable()
-    command! -buffer PackageManExecute call packageman#Execute()
+    command! -buffer PackageManCommit call packageman#Commit()
     command! -buffer PackageManPrevMark call packageman#PrevMark()
     command! -buffer PackageManNextMark call packageman#NextMark()
     command! -buffer PackageManUndo call packageman#Undo()
     command! -buffer PackageManInfo call packageman#PackageInfo()
+    command! -buffer PackageManApply call packageman#Apply()
 
-    nnoremap <silent> <buffer> D :PackageManRemove<CR>
-    nnoremap <silent> <buffer> d :PackageManRemove<CR>
-    nnoremap <silent> <buffer> R :PackageManRemove<CR>
-    nnoremap <silent> <buffer> r :PackageManRemove<CR>
-    nnoremap <silent> <buffer> P :PackageManPurge<CR>
-    nnoremap <silent> <buffer> p :PackageManPurge<CR>
-    nnoremap <silent> <buffer> I :PackageManInstall<CR>
-    nnoremap <silent> <buffer> i :PackageManInstall<CR>
-    nnoremap <silent> <buffer> H :PackageManHold<CR>
-    nnoremap <silent> <buffer> V :PackageManView<CR>
-    nnoremap <silent> <buffer> E :PackageManExecute<CR>
-    nnoremap <silent> <buffer> u :PackageManUndo<CR>
-    nnoremap <silent> <buffer> U :PackageManUndo<CR>
-    nnoremap <silent> <buffer> <Space> :PackageManRepeat<CR>
+    nnoremap <silent> <buffer> D : PackageManRemove<CR>
+    nnoremap <silent> <buffer> d : PackageManRemove<CR>
+    nnoremap <silent> <buffer> R : PackageManRemove<CR>
+    nnoremap <silent> <buffer> r : PackageManRemove<CR>
+    nnoremap <silent> <buffer> P : PackageManPurge<CR>
+    nnoremap <silent> <buffer> p : PackageManPurge<CR>
+    nnoremap <silent> <buffer> I : PackageManInstall<CR>
+    nnoremap <silent> <buffer> i : PackageManInstall<CR>
+    nnoremap <silent> <buffer> H : PackageManHold<CR>
+    nnoremap <silent> <buffer> V : PackageManView<CR>
+    nnoremap <silent> <buffer> E : PackageManCommit<CR>
+    nnoremap <silent> <buffer> u : PackageManUndo<CR>
+    nnoremap <silent> <buffer> U : PackageManUndo<CR>
+    nnoremap <silent> <buffer> <Space> : PackageManRepeat<CR>
 
-    nnoremap <silent> <buffer> [s :PackageManPrevMark<CR>
-    nnoremap <silent> <buffer> ]s :PackageManNextMark<CR>
-    nnoremap <silent> <buffer> [c :PackageManPrevMark<CR>
-    nnoremap <silent> <buffer> ]c :PackageManNextMark<CR>
+    nnoremap <silent> <buffer> [s : PackageManPrevMark<CR>
+    nnoremap <silent> <buffer> ]s : PackageManNextMark<CR>
+    nnoremap <silent> <buffer> [c : PackageManPrevMark<CR>
+    nnoremap <silent> <buffer> ]c : PackageManNextMark<CR>
 
-    nnoremap <silent> <buffer> h :PackageManInfo<CR>
-    nnoremap <silent> <buffer> <Leader>P :PackageManPurgeAll<CR>
+    nnoremap <silent> <buffer> h : PackageManInfo<CR>
+    nnoremap <silent> <buffer> q : silent! pclose!<CR>
+    nnoremap <silent> <buffer> <Leader>P : PackageManPurgeAll<CR>
 
     nnoremap <silent> <buffer> <F1> :help packageman-bindings<CR>
 
-    vnoremap <silent> <buffer> D :PackageManRemove<CR>
-    vnoremap <silent> <buffer> d :PackageManRemove<CR>
-    vnoremap <silent> <buffer> R :PackageManRemove<CR>
-    vnoremap <silent> <buffer> r :PackageManRemove<CR>
-    vnoremap <silent> <buffer> P :PackageManPurge<CR>
-    vnoremap <silent> <buffer> p :PackageManPurge<CR>
-    vnoremap <silent> <buffer> I :PackageManInstall<CR>
-    vnoremap <silent> <buffer> i :PackageManInstall<CR>
-    vnoremap <silent> <buffer> H :PackageManHold<CR>
-
-    " Setting filetype triggers immediate autocommands
-    setlocal filetype=packages
+    vnoremap <silent> <buffer> D : PackageManRemove<CR>
+    vnoremap <silent> <buffer> d : PackageManRemove<CR>
+    vnoremap <silent> <buffer> R : PackageManRemove<CR>
+    vnoremap <silent> <buffer> r : PackageManRemove<CR>
+    vnoremap <silent> <buffer> P : PackageManPurge<CR>
+    vnoremap <silent> <buffer> p : PackageManPurge<CR>
+    vnoremap <silent> <buffer> I : PackageManInstall<CR>
+    vnoremap <silent> <buffer> i : PackageManInstall<CR>
+    vnoremap <silent> <buffer> H : PackageManHold<CR>
 endfunction
 
 
@@ -520,13 +523,16 @@ function! packageman#MarkRange(mark,start,end) abort
     call packageman#SignSelections()
 endfunction
 
+function! packageman#FilteredMarks() abort
+    return filter(copy(b:pkgs), '(v:val["state"] !=? v:val["mark"]) || (v:val["current"] ==? "i" && v:val["state"] ==? "r")')
+endfunction
+
 function! packageman#ListMarks() abort
     let l:out = ''
-    let l:list = filter(copy(b:pkgs),'v:val["state"] !=# v:val["mark"] && v:val["mark"] !=# "E"')
-    for l:pkg in l:list
+    for l:pkg in packageman#FilteredMarks()
         let l:out .= printf("%s %s\n", l:pkg['mark'][0], l:pkg['name'])
     endfor
-    echo l:out
+    echo l:out ==# '' ? 'No packages selected.' : l:out
 endfunction
 
 function! packageman#PurgeAll() abort
@@ -538,10 +544,12 @@ function! packageman#PurgeAll() abort
     call packageman#SignSelections()
 endfunction
 
-function! packageman#Execute() abort
+function! packageman#Commit() abort
     if packageman#SetSelections() > 0
         call packageman#SignSelections()
         exe '!sudo apt-get dselect-upgrade'
+        " Force buffer reload to ensure dpkg data and buffer data remain in sync
+        silent! edit!
     endif
     redraw!
 endfunction
