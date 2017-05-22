@@ -73,8 +73,8 @@ The following commands are available:
   This includes all installed, and not yet installed packages available
   to apt-get.
 
-  *WARNING:* Packages are retrieved from the dpkg 'avail' list. 
-  To generate (or update) this list after 'apt-get update' has been 
+  *WARNING:* Packages are retrieved from the dpkg 'avail' list.
+  To generate (or update) this list after 'apt-get update' has been
   performed, use the 'PackageManRefresh' command.
 
 -----------------------------------------------------------------------------
@@ -82,23 +82,23 @@ The following commands are available:
 :[m[,n]]|PackageManInstall|
 
   Mark package(s) on line _m_ to _n_ as "to be installed".  This will
-  show an **'i'** next to the package name if the package is not already 
+  show an **'i'** next to the package name if the package is not already
   installed.
 
                                                             *:PackageManRemove*
 :[m[,n]]|PackageManRemove|
 
   Mark package(s) on line 'm' to 'n' as "to be uninstalled".
-  Once the uninstallation is complete, many packages leave their 
+  Once the uninstallation is complete, many packages leave their
   configuration behind, in case they are reinstalled.
-  These show up marked with an 'r'.    To completely purge these 
+  These show up marked with an 'r'.    To completely purge these
   packages, use the Purge command below
 
                                                              *:PackageManPurge*
 :[m[,n]]|PackageManPurge|
 
   Mark package(s) on line _m_ to _n_ as "to be purged".
-  A package can be purged whether it is installed, or has been recently 
+  A package can be purged whether it is installed, or has been recently
   removed but left configuration files behind.
   Once purged, the package will no longer be visible in the package list.
   This will show an 'p' next to the package name.
@@ -107,8 +107,8 @@ The following commands are available:
 :[m[,n]]|PackageManHold|
 
   Mark package(s) on line _m_ to _n_ as "to be held".
-  A package in the _hold_ state will never upgrade automatically via 
-  apt-get dist-upgrade.  This will show an 'h' next to the package 
+  A package in the _hold_ state will never upgrade automatically via
+  apt-get dist-upgrade.  This will show an 'h' next to the package
   name.
 
 -----------------------------------------------------------------------------
@@ -117,23 +117,27 @@ The following commands are available:
 
   Repeat the last command.   After executing 'PackageManInstall' for
   example, pressing a key bound to _PackageManRepeat_ will cause subsequent
-  packages to be marked for installation.  This will move to the next line 
+  packages to be marked for installation.  This will move to the next line
   after marking the package.
 -----------------------------------------------------------------------------
                                                               *:PackageManInfo*
 :|PackageManInfo|
 
-  Display detailed information about the package in the VIM preview window. 
-  Executing this a second time on the same package will close the preview 
-  window.  Executing this on another package will update the preview window.
+  Display detailed information about the currently selected package.
+
+  This will display package name, version, dependencies and dependents.
+  It will also highlight if the package is marked as `essential`.
+
+  Executing this a second time on the same package will close the information
+  window.
 -----------------------------------------------------------------------------
                                                               *:PackageManUndo*
 :|PackageManUndo|
 
-  Completely undo the last change.  If a number of packages are marked 
+  Completely undo the last change.  If a number of packages are marked
   for install, this will reset them to their original state.
 
-  Note: If you commit the changes, the you will need to commit the undo
+  Note: If you Apply the changes, the you will need to apply the undo
   for it to have any effect. When marking a package for install, dependencies
   are automatically marked for installation.  Toggling the Install will only
   reset the package you toggle.  Undo however, will reset the package and all
@@ -158,17 +162,31 @@ The following commands are available:
   Using the _apt-get_ utility, this will retrieve the details of all known
   packages and import them.  This allows 'PackageMan!' to accurately
   display uninstalled packages.
-
+-----------------------------------------------------------------------------
                                                               *:PackageManView*
 :|PackageManView|
 
   Display a preview of all changes which are pending for the next commit.
+  These are displayed in an abbreviated form, for example
+    i  zsh~
+    r  tcsh~
+    h  bash~
+  meaning to install *zsh,*  remove *tcsh,* and hold *bash.*
+-----------------------------------------------------------------------------
+                                                           *:PackageManApply*
+:|PackageManApply|
 
-                                                           *:PackageManExecute*
-:|PackageManExecute|
+  Apply all changes to the `dpkg database.   Package selection changes such
+  as `install`, `remove`, `purge` and `hold` are saved to the dpkg database using the
+  dpkg |selections| interface.
+  Changes can be viewed with `dpkg --get-selections` and committed using the
+  command `apt-get dselect-upgrade.`
+-----------------------------------------------------------------------------
+                                                           *:PackageManCommit*
+:|PackageManCommit|
 
-  Commit all changes and execute the command `apt-get dselect-upgrade`
-  to trigger the installation/removal of packages.
+  Apply and Commit all changes. The command `apt-get dselect-upgrade` is run
+  interactively to trigger the installation/removal marked of packages.
 
 =============================================================================
 KEY BINDINGS                                              *packageman-bindings*
@@ -179,9 +197,9 @@ Commands for Adding and Removing Packages                           *I* *R* *D* 
 
 In Normal and Visual modes:
 
-    `I`          Mark a package for installation   (|PackageManInstall|)
-    `R` or `D`     Mark a package for removal        (|PackageManRemove|)
-    `P`          Mark a package for purging        (|PackageManPurge|)
+    `I/i`        Mark a package for installation   (|PackageManInstall|)
+    `R/r` or `D/d` Mark a package for removal        (|PackageManRemove|)
+    `P/p`        Mark a package for purging        (|PackageManPurge|)
     `H`          Mark a package for holding        (|PackageManHold|)
 
 Commands for reviewing package selection                        *V* *E* *U* *<space>*
@@ -189,13 +207,17 @@ Commands for reviewing package selection                        *V* *E* *U* *<sp
 In Normal mode only:
 
     `V`          Preview the selected actions      (|PackageManView|)
-    `E`          Execute the selected actions      (|PackageManExecute|)
+    `E`          Execute the selected actions      (|PackageManCommit|)
     `U` or `u`     Undo the last selection action    (|PackageManUndo|)
     `<Space>`    Repeat the last selection action  (|PackageManRepeat|)
-                                                 (|PackageManNextMark|) 
+                                                 (|PackageManNextMark|)
     `]s` or `]c`   Navigate to the next group of marked packages
-                                                 (|PackageManPrevMark|) 
+                                                 (|PackageManPrevMark|)
     `[s` or `[c`   Navigate to the previous group of marked packages
+                                                 (|PackageManInfo|)
+    `h`          Display information about the selected package
+    `q`          Close the package information window
+    `<F1>`       Open the Package help.            (|packageman-bindings|)
 
 =============================================================================
 PERFORMANCE                                            *packageman-performance*
