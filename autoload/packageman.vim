@@ -524,7 +524,7 @@ function! packageman#MarkRange(mark,start,end) abort
 endfunction
 
 function! packageman#FilteredMarks() abort
-    return filter(copy(b:pkgs), '(v:val["state"] !=? v:val["mark"]) || (v:val["current"] ==? "i" && v:val["state"] ==? "r")')
+    return filter(copy(b:pkgs), '(v:val["state"] !=? v:val["mark"]) || (v:val["current"] ==? "i" && (v:val["state"] ==? "r" || v:val["state"] ==? "p"))')
 endfunction
 
 function! packageman#ListMarks() abort
