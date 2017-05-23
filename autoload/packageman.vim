@@ -460,7 +460,7 @@ function! packageman#MarkRange(mark,start,end) abort
         endif
         if l:pkg['essential'] ==? 'no' || b:mark_force
             if l:new_mark !=? l:pkg['mark']
-                if has_key(b:deps, l:pkg['name']) && l:new_mark ==? 'r' && b:mark_set
+                if has_key(b:deps, l:pkg['name']) && (l:new_mark ==? 'r' || l:new_mark ==? 'p') && b:mark_set
                     let l:deps = [ l:pkg['name'] ]
                     while len(l:deps) > 0 && l:error ==# ''
                         let l:cur = remove(l:deps,0)
