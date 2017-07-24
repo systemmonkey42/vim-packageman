@@ -222,8 +222,15 @@ EOF
     endif
 endfunction
 
-function! packageman#UpdateAvailable() abort
+function! packageman#UpdateAvailable(bang) abort
     let l:file = tempname()
+    if a:bang !=# ''
+        let l:cmd = 'apt-get update'
+        if ! g:is_root
+            let l:cmd = 'sudo -E '.l:cmd
+        endif
+        execute '!'.l:cmd
+    endif
     let l:availdata = systemlist('apt-cache dumpavail')
     if len(l:availdata) > 1
         call writefile(l:availdata, l:file)
@@ -374,7 +381,6 @@ function! packageman#Init(bang) abort
     command! -buffer -range PackageManHold call packageman#SetMark('h',<line1>,<line2>)
     command! -buffer -range PackageManRepeat call packageman#RepeatMark(<line1>,<line2>)
     command! -buffer PackageManPurgeAll call packageman#PurgeAll()
-    command! -buffer PackageManRefresh call packageman#UpdateAvailable()
     command! -buffer PackageManCommit call packageman#Commit()
     command! -buffer PackageManPrevMark call packageman#PrevMark()
     command! -buffer PackageManNextMark call packageman#NextMark()
@@ -418,7 +424,6 @@ function! packageman#Init(bang) abort
     vnoremap <silent> <buffer> i : PackageManInstall<CR>
     vnoremap <silent> <buffer> H : PackageManHold<CR>
 endfunction
-
 
 function! packageman#RepeatMark(start,end) abort
     if exists('b:last_mark') && b:last_mark !=# ''

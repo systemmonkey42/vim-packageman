@@ -106,11 +106,13 @@ The following commands are available:
 
   Navigate to the next or previous block of marked packages.
 
-- <a name="refresh"></a>PackageManRefresh
+- <a name="refresh"></a>PackageManRefresh[!]
 
   Using the _apt-get_ utility, this will retrieve the details of all known
   packages and import them.  This allows _PackageMan!_ to accurately display
   uninstalled packages.
+
+  The use of '!' will force an 'apt-get update' as part of the refresh.
 
 - PackageManView
 
