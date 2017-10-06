@@ -224,17 +224,18 @@ endfunction
 
 function! packageman#UpdateAvailable(bang) abort
     let l:file = tempname()
+    let l:sudo = ''
+    if ! g:is_root
+        let l:sudo = 'sudo -E '
+    endif
     if a:bang !=# ''
-        let l:cmd = 'apt-get update'
-        if ! g:is_root
-            let l:cmd = 'sudo -E '.l:cmd
-        endif
+        let l:cmd = l:sudo.'apt-get update'
         execute '!'.l:cmd
     endif
     let l:availdata = systemlist('apt-cache dumpavail')
     if len(l:availdata) > 1
         call writefile(l:availdata, l:file)
-        call system('dpkg --merge-avail '.l:file)
+        call system(l:sudo.'dpkg --merge-avail '.l:file)
         call delete(l:file)
     endif
     echomsg "Update Complete."
