@@ -10,16 +10,18 @@ endif
 let s:cpo_save = &cpo
 set cpo&vim
 
-syn match   packagesInfo    '\S\+\s\+\S\+$' contains=packagesSpecial,packagesName,packagesVersion
-syn match   packagesSpecial '^>\S\+\s\+\S\+$' contains=packagesToken,packagesEssential,packagesVersion
-syn match   packagesEssential contained '\S\+\ze\s\+' nextgroup=packagesVersion
-syn match   packagesName    contained '\S\+\ze\s\+' nextgroup=packagesVersion
-syn match   packagesVersion contained '\S\+$'
-syn match   packagesToken   contained '>' conceal nextgroup=packagesEssential
+syn match   PackagesInfo      '^>\@!' nextgroup=PackagesName
+syn match   PackagesSpecial   '^>.*$' contains=PackagesToken
+syn match   PackagesName      contained '\S\+\s\+' nextgroup=PackagesArch
+syn match   PackagesArch      contained '\S\+\s\+' nextgroup=PackagesVersion
+syn match   PackagesToken     contained '>' nextgroup=PackagesEssential conceal
+syn match   PackagesEssential contained '\S\+\s\+' nextgroup=PackagesArch
+syn match   PackagesVersion   contained '\S\+$'
 
-hi def link packagesName    Directory
-hi def link packagesVersion Comment
-hi def link packagesEssential SpecialKey
+hi def link PackagesName      Directory
+hi def link PackagesArch      Statement
+hi def link PackagesVersion   Comment
+hi def link PackagesEssential SpecialKey
 
 let b:current_syntax = "packages"
 

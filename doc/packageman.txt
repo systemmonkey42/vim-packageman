@@ -51,11 +51,32 @@ It mostly came from a lack of inspiration.
 =============================================================================
 CONFIGURATION                                        *packageman-configuration*
 
-There are a couple configuration values available (shown with their default
+There are a few configuration values available (shown with their default
 values):
 
 * Hide packages which are removed, but not purged >
   let g:packageman_hide_removed = 0
+<
+* Disable the use of python.  Python improves performance, but it is possible
+  that the python code gives different results to the VIM code for certain
+  versions of vim. >
+  let g:packageman_use_python = 2
+<
+* Configure the color scheme to use.  Fill in a dictionary of keys and values
+  where the keys are from the set 'hipru' and 'HIPRU', and the values are
+  existing syntax highlight group name >
+  let l:packageman_highlight = {
+            \ 'h':'LineNr',
+            \ 'i':'Exception',
+            \ 'p':'Exception',
+            \ 'r':'Exception',
+            \ 'u':'LineNr',
+            \ 'H':'LineNr',
+            \ 'I':'SpecialKey',
+            \ 'P':'ErrorMsg',
+            \ 'R':'ErrorMsg',
+            \ 'U':'LineNr'
+            \ }
 <
 =============================================================================
 COMMANDS                                                  *packageman-commands*

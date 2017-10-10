@@ -2,7 +2,7 @@
 
 function! packageman#ParsePkgList(pkgs) abort
     "debug call packageman#ParsePkgList_py(a:pkgs)
-    return has('python') ?
+    return has('python') && get(g:,'packageman_use_python',1) ?
                 \ packageman#ParsePkgList_py(a:pkgs) :
                 \ packageman#ParsePkgList_vim(a:pkgs)
 endfunction
@@ -20,12 +20,13 @@ pkgs[0:] = map(
     lambda x: {
     "name" : x[0],
     "version" : x[2],
-    "essential" : x[3],
-    "dep": x[4],
-    "deps": x[4],
+    "arch" : x[3],
+    "essential" : x[4],
+    "dep": x[5],
+    "deps": x[5],
     "depends" : filter(
         lambda x: x!= '', map(
-        lambda x: re.split(r'[: ]',x)[0], re.split(r',\s*',x[4]))),
+        lambda x: re.split(r'[: ]',x)[0], re.split(r',\s*',x[5]))),
     "state": x[1][0].lower(),
     "mark": x[1][0].lower(),
     "current": x[1][1],
@@ -48,8 +49,9 @@ function! packageman#ParsePkgList_vim(pkgs) abort
     call map(map(a:pkgs,'split(v:val,''\t'')'), '{
                 \ "name":v:val[0],
                 \ "version":v:val[2],
-                \ "essential":v:val[3],
-                \ "depends":map(split(get(v:val,4,''''),'',\s*''),''split(v:val,'''' '''')[0]''),
+                \ "arch":v:val[3],
+                \ "essential":v:val[4],
+                \ "depends":map(split(get(v:val,5,''''),'',\s*''),''split(v:val,'''' '''')[0]''),
                 \ "state":tolower(v:val[1][0]),
                 \ "mark":tolower(v:val[1][0]),
                 \ "current":v:val[1][1],
@@ -74,17 +76,17 @@ function! packageman#LoadAvailable() abort
     " 'dpkg --get-selections *' expands the wildcard on the commandline due to some internal
     " bug.  use bash -f -c 'dpkg --get-selections *' to prevent this happening, and allow
     " the wildcard to apply to the package database instead.
-    let l:avail = systemlist( "awk -F': ' 'BEGIN{cmd=\"bash -f -c \\\"dpkg --get-selections *\\\"\";while(cmd|getline){split($0,s,\" \");split(s[1],p,\":\");pkg=p[1];state[pkg]=substr(s[2],1,1);if(state[pkg]==\"d\"){state[pkg]=\"r\"}}}/^$/{if(n[\"Essential\"]==\"\"){n[\"Essential\"]=\"no\"};if(state[n[\"Package\"]]==\"\"){state[n[\"Package\"]]=\"r\"}if(n[\"Package\"]!=prev){print n[\"Package\"]\"\\t\"state[n[\"Package\"]]\"u \\t\"n[\"Version\"]\"\\t\"n[\"Essential\"]\"\\t\"n[\"Depends\"];prev=n[\"Package\"]};delete n;n[\"Essential\"]=\"no\";next}{n[$1]=$2}' /var/lib/dpkg/available\|LC_ALL=C sort" )
+    let l:avail = systemlist( "awk -F': ' 'BEGIN{cmd=\"bash -f -c \\\"dpkg --get-selections *\\\"\";while(cmd|getline){split($0,s,\" \");split(s[1],p,\":\");pkg=p[1];state[pkg]=substr(s[2],1,1);if(state[pkg]==\"d\"){state[pkg]=\"r\"}}}/^$/{if(n[\"Essential\"]==\"\"){n[\"Essential\"]=\"no\"};if(state[n[\"Package\"]]==\"\"){state[n[\"Package\"]]=\"r\"}if(n[\"Package\"]!=prev){print n[\"Package\"]\"\\t\"state[n[\"Package\"]]\"u \\t\"n[\"Version\"]\"\\t\"n[\"Architecture\"]\"\\t\"n[\"Essential\"]\"\\t\"n[\"Depends\"];prev=n[\"Package\"]};delete n;n[\"Essential\"]=\"no\";next}{n[$1]=$2}' /var/lib/dpkg/available\|LC_ALL=C sort" )
     return packageman#ParsePkgList(l:avail)
 endfunction
 
 function! packageman#LoadInstalled() abort
-    let l:installed = systemlist("dpkg-query -W --showformat '${Package}\\t${db:Status-Abbrev}\\t${Version}\\t${Essential}\\t${Depends}\\n'")
+    let l:installed = systemlist("dpkg-query -W --showformat '${Package}\\t${db:Status-Abbrev}\\t${Version}\\t${Architecture}\\t${Essential}\\t${Depends}\\n'")
     return packageman#ParsePkgList(l:installed)
 endfunction
 
 function! packageman#CalcDependencies() abort
-    if has('python')
+    if has('python') && get(g:,'packageman_use_python',1)
         python << EOF
 import vim
 p = vim.current.buffer.vars['pkgs']
@@ -164,7 +166,7 @@ endfunction
 
 function! packageman#SignSelections(...) abort
     let l:ignored = (b:package_source ==? 'installed')? 'i' : 'r'
-    if has('python')
+    if has('python') && get(g:,'packageman_use_python',1)
         let l:filtered = []
         python << EOF
 f = vim.bindeval('l:filtered')
@@ -193,7 +195,7 @@ EOF
 endfunction
 
 function! packageman#LoadBuffer() abort
-    if has('python')
+    if has('python') && get(g:,'packageman_use_python',1)
         let l:buffer = []
         python << EOF
 import vim
@@ -203,14 +205,14 @@ ss = vim.Function('packageman#SignSelections')
 l = max(map(lambda x: len(x["name"]), p))
 l = l + 4
 b[0:] = map(
-    lambda x: "%s%-*s%s" % ( ( '>' if x["essential"] != "no" else '' ), l, x["name"], x["version"] ), p)
+    lambda x: "%s%-*s%-7s%s" % ( ( '>' if x["essential"] != "no" else '' ), l, x["name"], x["arch"], x["version"] ), p)
 vim.current.buffer.options['modifiable'] = 0
 vim.current.buffer.options['modified'] = 0
 ss()
 EOF
     else
         let l:len = max(map(copy(b:pkgs),'len(v:val["name"])')) + 4
-        let l:buffer = map(copy(b:pkgs),'printf("%-*s%s",l:len, v:val[''name''], v:val[''version''])')
+        let l:buffer = map(copy(b:pkgs),'printf("%-*s%-7s%s",l:len, v:val[''name''], v:val[''arch''], v:val[''version''])')
         call setline(1,l:buffer)
         setlocal nomodifiable
         setlocal nomodified
@@ -287,12 +289,12 @@ function! packageman#PackageInfo() abort
         if !has_key(l:data,'packageinfo')
             let l:pkg = l:data['name']
             echon 'Getting description for package '.l:pkg
-            let l:data['packageinfo'] = systemlist('dpkg-query -W --showformat=''** *${Package}* `${Version}`\n\nDepends on ${Depends}~\n\n${Description}\n'' '.l:pkg)
+            let l:data['packageinfo'] = systemlist('dpkg-query -W --showformat=''** *${Package}* `${Version}`\n\nArchitecture: ${Architecture}~\nDepends on ${Depends}~\n\n${Description}\n'' '.l:pkg)
             if l:data['essential'] !=? 'no'
-                call insert(l:data['packageinfo'], 'Essential: '.l:data['essential'].'~', 2)
+                call insert(l:data['packageinfo'], 'Essential:    '.l:data['essential'].'~', 3)
             endif
             if l:deps !=# ''
-                call insert(l:data['packageinfo'], l:deps, 3)
+                call insert(l:data['packageinfo'], l:deps, 4)
             endif
         else
             echo
@@ -345,18 +347,31 @@ function! packageman#Apply() abort
 endfunction
 
 function! packageman#Init(bang) abort
+
+    " Default buffer highlighting
+    let l:packageman_highlight = {
+                \ 'h':'LineNr',
+                \ 'i':'Exception',
+                \ 'p':'Exception',
+                \ 'r':'Exception',
+                \ 'u':'LineNr',
+                \ 'H':'LineNr',
+                \ 'I':'SpecialKey',
+                \ 'P':'ErrorMsg',
+                \ 'R':'ErrorMsg',
+                \ 'U':'LineNr'
+                \ }
+
+    if !exists('g:packageman_highlight')
+        let g:packageman_highlight = {}
+    endif
+
     enew
     file dpkg
-    sign define packageman_sign_r text=r linehl=Exception
-    sign define packageman_sign_R text=R linehl=ErrorMsg
-    sign define packageman_sign_i text=i linehl=Exception
-    sign define packageman_sign_I text=I linehl=NonText
-    sign define packageman_sign_h text=h linehl=LineNr
-    sign define packageman_sign_H text=H linehl=LineNr
-    sign define packageman_sign_p text=p linehl=Exception
-    sign define packageman_sign_P text=P linehl=ErrorMsg
-    sign define packageman_sign_u text=u linehl=LineNr
-    sign define packageman_sign_U text=U linehl=LineNr
+
+    for l:key in split('hipruHIPRU','\zs')
+        exe 'sign define packageman_sign_'.l:key.' text='.l:key.' linehl='.get(g:packageman_highlight,l:key, l:packageman_highlight[l:key])
+    endfor
 
     augroup PackageMan
         autocmd BufReadCmd <buffer> call packageman#Load()
