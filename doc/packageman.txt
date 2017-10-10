@@ -64,18 +64,16 @@ values):
 <
 * Configure the color scheme to use.  Fill in a dictionary of keys and values
   where the keys are from the set 'hipru' and 'HIPRU', and the values are
-  existing syntax highlight group name >
+  existing syntax highlight group name. >
   let l:packageman_highlight = {
-            \ 'h':'LineNr',
-            \ 'i':'Exception',
-            \ 'p':'Exception',
-            \ 'r':'Exception',
-            \ 'u':'LineNr',
-            \ 'H':'LineNr',
-            \ 'I':'SpecialKey',
-            \ 'P':'ErrorMsg',
-            \ 'R':'ErrorMsg',
-            \ 'U':'LineNr'
+            \ 'h':'LineNr',		" hold
+            \ 'i':'Exception',		" install
+            \ 'p':'Exception',		" purge
+            \ 'r':'Exception',		" remove
+            \ 'H':'LineNr',		" hold essential package
+            \ 'I':'SpecialKey',		" Install essential package (should be already installed)
+            \ 'P':'ErrorMsg',		" Purge essential package
+            \ 'R':'ErrorMsg',		" Remove essential package
             \ }
 <
 =============================================================================
