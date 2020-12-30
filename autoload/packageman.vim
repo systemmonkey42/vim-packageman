@@ -227,7 +227,7 @@ endfunction
 function! packageman#UpdateAvailable(bang) abort
     let l:file = tempname()
     let l:sudo = ''
-    if ! g:is_root
+    if $USER !=? 'root'
         let l:sudo = 'sudo -E '
     endif
     if a:bang !=# ''
