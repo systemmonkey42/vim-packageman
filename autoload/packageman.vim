@@ -2,7 +2,7 @@
 
 function! packageman#ParsePkgList(pkgs) abort
     "debug call packageman#ParsePkgList_py(a:pkgs)
-    return has('python') && get(g:,'packageman_use_python',1) ?
+    return has('python3') && get(g:,'packageman_use_python',1) ?
                 \ packageman#ParsePkgList_py(a:pkgs) :
                 \ packageman#ParsePkgList_vim(a:pkgs)
 endfunction
@@ -11,12 +11,12 @@ function! packageman#ParsePkgList_py(pkgs) abort
     let l:pkgs = a:pkgs
     let l:ref = {}
     let l:hide = b:hide_removed
-    python << EOF
+    python3 << EOF
 import vim, re
 pkgs = vim.bindeval('l:pkgs')
 ref = vim.bindeval('l:ref')
 line = 0
-pkgs[0:] = map(
+pkgs[0:] = list(map(
     lambda x: {
     "name" : x[0],
     "version" : x[2],
@@ -24,15 +24,15 @@ pkgs[0:] = map(
     "essential" : x[4],
     "dep": x[5],
     "deps": x[5],
-    "depends" : filter(
+    "depends" : list(filter(
         lambda x: x!= '', map(
-        lambda x: re.split(r'[: ]',x)[0], re.split(r',\s*',x[5]))),
+        lambda x: re.split(r'[: ]',x)[0], re.split(r',\s*',x[5])))),
     "state": x[1][0].lower(),
     "mark": x[1][0].lower(),
     "current": x[1][1],
     "line": 0
     },
-    map( lambda x: x.split('\t'),pkgs) )
+    map( lambda x: x.decode('utf-8').split('\t'),pkgs) ))
 for key in pkgs:
     if not ref.has_key(key["name"]):
         ref[key["name"]] = line
@@ -86,8 +86,8 @@ function! packageman#LoadInstalled() abort
 endfunction
 
 function! packageman#CalcDependencies() abort
-    if has('python') && get(g:,'packageman_use_python',1)
-        python << EOF
+    if has('python3') && get(g:,'packageman_use_python',1)
+        python3 << EOF
 import vim
 p = vim.current.buffer.vars['pkgs']
 d = { x: [] for x in vim.current.buffer.vars['ref'].keys() }
@@ -166,9 +166,9 @@ endfunction
 
 function! packageman#SignSelections(...) abort
     let l:ignored = (b:package_source ==? 'installed')? 'i' : 'r'
-    if has('python') && get(g:,'packageman_use_python',1)
+    if has('python3') && get(g:,'packageman_use_python',1)
         let l:filtered = []
-        python << EOF
+        python3 << EOF
 f = vim.bindeval('l:filtered')
 i = vim.bindeval('l:ignored')
 m = vim.current.buffer.vars['marks']
@@ -195,17 +195,22 @@ EOF
 endfunction
 
 function! packageman#LoadBuffer() abort
-    if has('python') && get(g:,'packageman_use_python',1)
+    if has('python3') && get(g:,'packageman_use_python',1)
         let l:buffer = []
-        python << EOF
+        python3 << EOF
 import vim
 p = vim.bindeval('b:pkgs')
 b = vim.current.buffer
 ss = vim.Function('packageman#SignSelections')
 l = max(map(lambda x: len(x["name"]), p))
 l = l + 4
-b[0:] = map(
-    lambda x: "%s%-*s%-7s%s" % ( ( '>' if x["essential"] != "no" else '' ), l, x["name"], x["arch"], x["version"] ), p)
+b[0:] = list(map(
+    lambda x: "%s%-*s%-7s%s" % ( ( '>' if x["essential"].decode('utf-8') != "no" else '' ),
+        l,
+        x["name"].decode('utf-8'),
+        x["arch"].decode('utf-8'),
+        x["version"].decode('utf-8')
+        ), p))
 vim.current.buffer.options['modifiable'] = 0
 vim.current.buffer.options['modified'] = 0
 ss()
@@ -289,12 +294,18 @@ function! packageman#PackageInfo() abort
         if !has_key(l:data,'packageinfo')
             let l:pkg = l:data['name']
             echon 'Getting description for package '.l:pkg
-            let l:data['packageinfo'] = systemlist('dpkg-query -W --showformat=''** *${Package}* `${Version}`\n\nArchitecture: ${Architecture}~\nDepends on ${Depends}~\n\n${Description}\n'' '.l:pkg)
+            let l:pkginfo = systemlist('dpkg-query -W --showformat=''** *${Package}* `${Version}`\n\nArchitecture: ${Architecture}~\nDepends on ${Depends}~\n\n${Description}\n'' '.l:pkg)
+            if v:shell_error
+                let l:pkginfo = systemlist('apt-cache show '.l:pkg.'|grep -v -e SHA1 -e SHA2 -e -md5 | sort|( declare -a top=(); declare -a rest=(); while read -r line; do if [[ "$line" =~ (Description|Package|Version|Origin) ]]; then top+=( "$line" ); else rest+=( "$line" ); fi; done; printf "%s~\n" "${top[@]}"; printf "%s\n" "${rest[@]}" | sed -e "s/^\(\(-\|\w\)*:\)/*\1*/;" )')
+            endif
+
+            let l:data['packageinfo'] = l:pkginfo
+
             if l:data['essential'] !=? 'no'
                 call insert(l:data['packageinfo'], 'Essential:    '.l:data['essential'].'~', 3)
             endif
             if l:deps !=# ''
-                call insert(l:data['packageinfo'], l:deps, 4)
+                call insert(l:data['packageinfo'], l:deps)
             endif
         else
             echo
